@@ -233,7 +233,7 @@ export default function VisitDetailPage() {
           {/* Shop Info */}
           <Section title="Shop Information">
             <InfoRow label="Shop Name"   value={visit.shopName}  />
-            <InfoRow label="Shop Code"   value={visit.shopCode}  mono />
+            <InfoRow label="Shop Contact Number"   value={visit.shopCode}  mono />
             <InfoRow label="Owner Name"  value={visit.ownerName} />
             <InfoRow label="Contact No." value={`+91 ${visit.mobile}`} color="text-blue-600" />
             <InfoRow label="Field Type"  value={visit.fieldType} />

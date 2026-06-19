@@ -1,12 +1,11 @@
 // FILE: src/pages/AdminLoginPage.jsx
 // OWNER: Imran
-// DUMMY CREDENTIALS: admin@maavu.com / admin123
+// STATUS: REAL API — dummy login removed, real backend connected
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAdminAuth } from "../context/AdminAuthContext";
-
-const DUMMY_ADMIN = { _id: "adm001", name: "Super Admin", email: "admin@maavu.com", role: "superadmin" };
+import { adminLogin } from "../api/adminAuthApi";
 
 export default function AdminLoginPage() {
   const [email, setEmail]       = useState("");
@@ -22,15 +21,17 @@ export default function AdminLoginPage() {
     if (!email.trim())    { setError("Email is required.");    return; }
     if (!password.trim()) { setError("Password is required."); return; }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 800));
-    // DUMMY LOGIN — replace with adminLogin() API call when backend ready
-    if (email === "admin@maavu.com" && password === "admin123") {
-      login("dummy-admin-token-001", DUMMY_ADMIN);
+    try {
+      // REAL API CALL — hits POST /api/admin/auth/login on your backend
+      const response = await adminLogin(email, password);
+      // response = { token: "eyJ...", admin: { _id, name, email, role } }
+      login(response.token, response.admin);
       navigate("/dashboard");
-    } else {
-      setError("Invalid email or password.");
+    } catch (err) {
+      setError(err?.response?.data?.message || "Invalid email or password.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -49,12 +50,6 @@ export default function AdminLoginPage() {
 
         <h1 className="text-2xl font-bold text-white mb-1">Admin Login</h1>
         <p className="text-gray-400 text-sm mb-8">Sign in to manage your field team</p>
-
-        {/* Dev hint */}
-        <div className="bg-amber-900/30 border border-amber-700/40 rounded-2xl px-4 py-3 mb-6">
-          <p className="text-xs font-semibold text-amber-400 mb-1">🧪 Dev Mode</p>
-          <p className="text-xs text-amber-500 font-mono">admin@maavu.com / admin123</p>
-        </div>
 
         {error && (
           <div className="bg-red-900/30 border border-red-700/40 text-red-400 text-sm rounded-2xl px-4 py-3 mb-5">
