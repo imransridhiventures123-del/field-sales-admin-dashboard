@@ -1,131 +1,15 @@
 // FILE: src/pages/VisitDetailPage.jsx
 // OWNER: Naveen
 // PURPOSE: Full detail of a single visit in the admin dashboard
-//   - Shop info (name, code, owner, mobile, address, field type)
-//   - Employee who did the visit
-//   - Visit status + follow-up status + follow-up date
-//   - GPS location with Google Maps link
-//   - Photos grid (shop front, product display, additional)
-//   - Telecaller assignment info
-//
-// ADD ROUTE in App.jsx:
-//   import VisitDetailPage from "./pages/VisitDetailPage";
-//   <Route path="/all-visits/:id" element={<AdminPrivateRoute><VisitDetailPage /></AdminPrivateRoute>} />
+// CHANGE: Removed DUMMY_VISITS. Loads the real visit from
+// GET /api/admin/visits/:id via getVisitById(id).
+// Route registered in App.jsx is "/visits/:id".
 
+import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import AdminLayout from "../components/AdminLayout";
 import { formatDateTime, formatDate, STATUS_COLOR, FOLLOWUP_LABEL, FOLLOWUP_COLOR } from "../utils/helpers";
-
-// ── DUMMY DATA — replace with getVisitById(id) API call ──
-const DUMMY_VISITS = {
-  "v1": {
-    _id:         "v1",
-    shopName:    "Annas Provision Store",
-    shopCode:    "AP001",
-    ownerName:   "Annas",
-    mobile:      "9876540001",
-    fieldType:   "Field Sales",
-    address:     "123 Main Street, Adyar, Chennai - 600020",
-    latitude:    13.0082,
-    longitude:   80.2574,
-    status:      "Completed",
-    followUpStatus: "interested",
-    followUpDate:   null,
-    photos: [
-      { type: "Shop Front",       url: null },
-      { type: "Product Display",  url: null },
-    ],
-    employee: { _id:"e1", name:"Rakesh Kumar", employeeId:"EMP001", mobile:"9876543210" },
-    telecaller: { name:"Priya R", phone:"8925864472" },
-    createdAt: new Date(Date.now() - 7200000).toISOString(),
-    submittedAt: new Date(Date.now() - 7100000).toISOString(),
-  },
-  "v2": {
-    _id:         "v2",
-    shopName:    "Big Bazaar",
-    shopCode:    "BB001",
-    ownerName:   "Ravi Kumar",
-    mobile:      "9876540002",
-    fieldType:   "Collection",
-    address:     "456 Anna Salai, Teynampet, Chennai - 600018",
-    latitude:    13.0418,
-    longitude:   80.2341,
-    status:      "Completed",
-    followUpStatus: "payment_due",
-    followUpDate:   new Date(Date.now() + 172800000).toISOString().split("T")[0],
-    photos: [
-      { type: "Shop Front",       url: null },
-      { type: "Product Display",  url: null },
-      { type: "Additional",       url: null },
-    ],
-    employee: { _id:"e2", name:"Naveen S", employeeId:"EMP002", mobile:"9876543211" },
-    telecaller: { name:"Divya S", phone:"9876541002" },
-    createdAt: new Date(Date.now() - 5400000).toISOString(),
-    submittedAt: new Date(Date.now() - 5200000).toISOString(),
-  },
-  "v3": {
-    _id:         "v3",
-    shopName:    "Sri Murugan Stores",
-    shopCode:    "SM001",
-    ownerName:   "Murugan",
-    mobile:      "9876540003",
-    fieldType:   "Field Sales",
-    address:     "789 Gandhi Road, T Nagar, Chennai - 600017",
-    latitude:    13.0339,
-    longitude:   80.2185,
-    status:      "Pending",
-    followUpStatus: "callback",
-    followUpDate:   new Date(Date.now() + 86400000).toISOString().split("T")[0],
-    photos: [],
-    employee: { _id:"e3", name:"Divya R", employeeId:"EMP003", mobile:"9876543213" },
-    telecaller: null,
-    createdAt: new Date(Date.now() - 3600000).toISOString(),
-    submittedAt: new Date(Date.now() - 3500000).toISOString(),
-  },
-  "v4": {
-    _id:         "v4",
-    shopName:    "Kumar Stores",
-    shopCode:    "KS001",
-    ownerName:   "Suresh Kumar",
-    mobile:      "9876540004",
-    fieldType:   "Collection",
-    address:     "12 West Mambalam, Chennai - 600033",
-    latitude:    13.0390,
-    longitude:   80.2300,
-    status:      "Completed",
-    followUpStatus: "order_placed",
-    followUpDate:   null,
-    photos: [
-      { type: "Shop Front",       url: null },
-      { type: "Product Display",  url: null },
-    ],
-    employee: { _id:"e5", name:"Priya S", employeeId:"EMP005", mobile:"9876543215" },
-    telecaller: { name:"Lakshmi P", phone:"9876541004" },
-    createdAt: new Date(Date.now() - 1800000).toISOString(),
-    submittedAt: new Date(Date.now() - 1700000).toISOString(),
-  },
-  "v5": {
-    _id:         "v5",
-    shopName:    "Daily Fresh Mart",
-    shopCode:    "DF001",
-    ownerName:   "Rajan",
-    mobile:      "9876540005",
-    fieldType:   "Field Sales",
-    address:     "55 North Usman Road, T Nagar, Chennai - 600017",
-    latitude:    13.0674,
-    longitude:   80.2376,
-    status:      "Rejected",
-    followUpStatus: "not_interested",
-    followUpDate:   null,
-    photos: [
-      { type: "Shop Front", url: null },
-    ],
-    employee: { _id:"e6", name:"Rajan M", employeeId:"EMP006", mobile:"9876543216" },
-    telecaller: null,
-    createdAt: new Date(Date.now() - 900000).toISOString(),
-    submittedAt: new Date(Date.now() - 800000).toISOString(),
-  },
-};
+import { getVisitById } from "../api/visitsApi";
 
 // Section wrapper
 function Section({ title, children }) {
@@ -154,9 +38,43 @@ function InfoRow({ label, value, mono = false, color }) {
 export default function VisitDetailPage() {
   const { id }   = useParams();
   const navigate = useNavigate();
-  const visit    = DUMMY_VISITS[id];
+  const [visit, setVisit]     = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
 
-  if (!visit) {
+  useEffect(() => {
+    let active = true;
+    const fetchVisit = async () => {
+      setLoading(true);
+      setNotFound(false);
+      try {
+        const data = await getVisitById(id);
+        if (!active) return;
+        setVisit(data.visit || null);
+        if (!data.visit) setNotFound(true);
+      } catch (err) {
+        if (!active) return;
+        console.error("Visit detail fetch error:", err.message);
+        setNotFound(true);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchVisit();
+    return () => { active = false; };
+  }, [id]);
+
+  if (loading) {
+    return (
+      <AdminLayout title="Visit Detail">
+        <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+          <p className="text-gray-400 text-sm">Loading visit...</p>
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (notFound || !visit) {
     return (
       <AdminLayout title="Visit Detail">
         <div className="text-center py-20">
@@ -167,6 +85,9 @@ export default function VisitDetailPage() {
     );
   }
 
+  const followUpStatus = visit.followUp?.status;
+  const followUpDate   = visit.followUp?.date;
+  const photos = visit.photos || [];
   const googleMapsUrl = `https://www.google.com/maps?q=${visit.latitude},${visit.longitude}`;
 
   return (
@@ -186,7 +107,7 @@ export default function VisitDetailPage() {
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-xl font-bold text-gray-900">{visit.shopName}</h2>
-            <p className="text-sm text-gray-400 mt-0.5 font-mono">{visit.shopCode}</p>
+            {visit.shopCode && <p className="text-sm text-gray-400 mt-0.5 font-mono">{visit.shopCode}</p>}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {/* Visit status */}
@@ -194,9 +115,9 @@ export default function VisitDetailPage() {
               {visit.status}
             </span>
             {/* Follow-up status */}
-            {visit.followUpStatus && (
-              <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${FOLLOWUP_COLOR[visit.followUpStatus]}`}>
-                {FOLLOWUP_LABEL[visit.followUpStatus]}
+            {followUpStatus && (
+              <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${FOLLOWUP_COLOR[followUpStatus]}`}>
+                {FOLLOWUP_LABEL[followUpStatus]}
               </span>
             )}
             {/* Field type */}
@@ -210,16 +131,18 @@ export default function VisitDetailPage() {
         <div className="flex flex-wrap gap-5 mt-4 pt-4 border-t border-gray-50 text-xs text-gray-400">
           <span className="flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            Visit started: {formatDateTime(visit.createdAt)}
+            Visit recorded: {formatDateTime(visit.createdAt)}
           </span>
-          <span className="flex items-center gap-1.5">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            Submitted: {formatDateTime(visit.submittedAt)}
-          </span>
-          {visit.followUpDate && (
+          {visit.updatedAt && visit.updatedAt !== visit.createdAt && (
+            <span className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              Last updated: {formatDateTime(visit.updatedAt)}
+            </span>
+          )}
+          {followUpDate && (
             <span className="flex items-center gap-1.5 text-amber-600 font-medium">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-              Follow-up due: {formatDate(visit.followUpDate)}
+              Follow-up due: {formatDate(followUpDate)}
             </span>
           )}
         </div>
@@ -233,36 +156,41 @@ export default function VisitDetailPage() {
           {/* Shop Info */}
           <Section title="Shop Information">
             <InfoRow label="Shop Name"   value={visit.shopName}  />
-            <InfoRow label="Shop Contact Number"   value={visit.shopCode}  mono />
+            <InfoRow label="Shop Code"   value={visit.shopCode}  mono />
             <InfoRow label="Owner Name"  value={visit.ownerName} />
-            <InfoRow label="Contact No." value={`+91 ${visit.mobile}`} color="text-blue-600" />
+            <InfoRow label="Contact No." value={visit.mobile ? `+91 ${visit.mobile}` : null} color="text-blue-600" />
             <InfoRow label="Field Type"  value={visit.fieldType} />
             <InfoRow label="Address"     value={visit.address}   />
+            {visit.notes && <InfoRow label="Notes" value={visit.notes} />}
           </Section>
 
           {/* Employee Info */}
           <Section title="Field Employee">
-            <div
-              onClick={() => navigate(`/sales-team/${visit.employee._id}`)}
-              className="flex items-center gap-4 p-3 rounded-xl hover:bg-blue-50 cursor-pointer transition -mx-1"
-            >
-              <div className="w-11 h-11 bg-blue-100 rounded-xl flex items-center justify-center text-blue-700 font-bold text-sm flex-shrink-0">
-                {visit.employee.name.split(" ").map(n=>n[0]).join("").slice(0,2)}
+            {visit.employee ? (
+              <div
+                onClick={() => navigate(`/sales-team/${visit.employee._id}`)}
+                className="flex items-center gap-4 p-3 rounded-xl hover:bg-blue-50 cursor-pointer transition -mx-1"
+              >
+                <div className="w-11 h-11 bg-blue-100 rounded-xl flex items-center justify-center text-blue-700 font-bold text-sm flex-shrink-0">
+                  {visit.employee.name?.split(" ").map(n=>n[0]).join("").slice(0,2)}
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-900">{visit.employee.name}</p>
+                  <p className="text-xs text-gray-400 font-mono">{visit.employee.employeeId}</p>
+                  <p className="text-xs text-blue-600 mt-0.5">+91 {visit.employee.mobile}</p>
+                </div>
+                <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
+                </svg>
               </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-gray-900">{visit.employee.name}</p>
-                <p className="text-xs text-gray-400 font-mono">{visit.employee.employeeId}</p>
-                <p className="text-xs text-blue-600 mt-0.5">+91 {visit.employee.mobile}</p>
-              </div>
-              <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
-              </svg>
-            </div>
+            ) : (
+              <p className="text-sm text-gray-400">No employee on this visit.</p>
+            )}
           </Section>
 
           {/* Telecaller assigned */}
           <Section title="Assigned Telecaller">
-            {visit.telecaller ? (
+            {visit.telecaller?.name ? (
               <div className="flex items-center gap-4 p-3 rounded-xl bg-green-50 -mx-1">
                 <div className="w-11 h-11 bg-green-100 rounded-xl flex items-center justify-center text-green-700 font-bold text-sm flex-shrink-0">
                   {visit.telecaller.name.split(" ").map(n=>n[0]).join("").slice(0,2)}
@@ -322,24 +250,25 @@ export default function VisitDetailPage() {
           </Section>
 
           {/* Photos */}
-          <Section title={`Photos (${visit.photos.length})`}>
-            {visit.photos.length === 0 ? (
+          <Section title={`Photos (${photos.length})`}>
+            {photos.length === 0 ? (
               <p className="text-sm text-gray-400">No photos uploaded for this visit.</p>
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                {visit.photos.map((photo, idx) => (
+                {photos.map((photo, idx) => (
                   <div key={idx} className="space-y-1.5">
                     {photo.url ? (
-                      <img src={photo.url} alt={photo.type}
-                        className="w-full h-32 object-cover rounded-xl border border-gray-100"/>
+                      <a href={photo.url} target="_blank" rel="noopener noreferrer">
+                        <img src={photo.url} alt={photo.type}
+                          className="w-full h-32 object-cover rounded-xl border border-gray-100"/>
+                      </a>
                     ) : (
-                      // Placeholder when no real photo yet
                       <div className="w-full h-32 bg-gray-100 rounded-xl border border-gray-200 flex flex-col items-center justify-center gap-1.5">
                         <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
                         </svg>
-                        <p className="text-[10px] text-gray-400">Photo uploaded</p>
+                        <p className="text-[10px] text-gray-400">No image</p>
                       </div>
                     )}
                     <p className="text-[11px] text-gray-500 font-medium text-center">{photo.type}</p>
@@ -350,21 +279,21 @@ export default function VisitDetailPage() {
           </Section>
 
           {/* Follow-up details */}
-          {visit.followUpStatus && (
-            <div className={`rounded-2xl border p-5 ${FOLLOWUP_COLOR[visit.followUpStatus].replace("text-","border-").split(" ")[0].replace("bg-","border-")} ${FOLLOWUP_COLOR[visit.followUpStatus].split(" ")[0]}`}>
+          {followUpStatus && (
+            <div className={`rounded-2xl border p-5 ${FOLLOWUP_COLOR[followUpStatus].split(" ")[0]}`}>
               <p className="text-xs font-semibold uppercase tracking-wide mb-3 opacity-70">Follow-up Details</p>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="opacity-70">Status</span>
-                  <span className="font-semibold">{FOLLOWUP_LABEL[visit.followUpStatus]}</span>
+                  <span className="font-semibold">{FOLLOWUP_LABEL[followUpStatus]}</span>
                 </div>
-                {visit.followUpDate && (
+                {followUpDate && (
                   <div className="flex justify-between text-sm">
                     <span className="opacity-70">Reminder Date</span>
-                    <span className="font-semibold">{formatDate(visit.followUpDate)}</span>
+                    <span className="font-semibold">{formatDate(followUpDate)}</span>
                   </div>
                 )}
-                {visit.telecaller && (
+                {visit.telecaller?.name && (
                   <div className="flex justify-between text-sm">
                     <span className="opacity-70">Assigned To</span>
                     <span className="font-semibold">{visit.telecaller.name}</span>

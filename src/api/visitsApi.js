@@ -4,3 +4,4 @@ export const getAllVisits  = (params) => axiosInstance.get("/api/admin/visits", 
 export const getVisitById = (id) => axiosInstance.get(`/api/admin/visits/${id}`).then(r => r.data);
 export const getFollowUps = () => axiosInstance.get("/api/admin/visits/followups").then(r => r.data);
 export const getAnalytics = () => axiosInstance.get("/api/admin/analytics").then(r => r.data);
+export const getShops     = () => axiosInstance.get("/api/admin/shops").then(r => r.data);

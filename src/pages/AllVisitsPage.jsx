@@ -1,26 +1,24 @@
 // FILE: src/pages/AllVisitsPage.jsx
 // OWNER: Naveen
+// CHANGE: Removed DUMMY_VISITS. Loads real visits from GET /api/admin/visits.
+// Status + field-type filters are sent to the backend; the text search box
+// filters the loaded page client-side. Also fixed a routing bug — rows were
+// navigating to "/all-visits/:id" but the only registered detail route in
+// App.jsx is "/visits/:id", so clicking a row used to 404 → redirect to login.
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AdminLayout from "../components/AdminLayout";
 import DataTable   from "../components/DataTable";
 import { formatDateTime, STATUS_COLOR, FOLLOWUP_LABEL, FOLLOWUP_COLOR } from "../utils/helpers";
-
-const DUMMY_VISITS = [
-  { _id:"v1", shopName:"Annas Provision Store", shopCode:"AP001", ownerName:"Annas",   mobile:"9876540001", employeeName:"Rakesh Kumar", fieldType:"Field Sales", followUpStatus:"interested",   status:"Completed", address:"123 Main St, Chennai", createdAt:new Date().toISOString() },
-  { _id:"v2", shopName:"Big Bazaar",            shopCode:"BB001", ownerName:"Ravi",    mobile:"9876540002", employeeName:"Naveen S",     fieldType:"Collection",  followUpStatus:"payment_due",  status:"Completed", address:"456 Anna Salai, Chennai", createdAt:new Date(Date.now()-1800000).toISOString() },
-  { _id:"v3", shopName:"Sri Murugan Stores",    shopCode:"SM001", ownerName:"Murugan", mobile:"9876540003", employeeName:"Divya R",      fieldType:"Field Sales", followUpStatus:"callback",     status:"Pending",   address:"789 Gandhi Rd, Chennai", createdAt:new Date(Date.now()-3600000).toISOString() },
-  { _id:"v4", shopName:"Kumar Stores",          shopCode:"KS001", ownerName:"Kumar",   mobile:"9876540004", employeeName:"Priya S",      fieldType:"Collection",  followUpStatus:"order_placed", status:"Completed", address:"12 West St, Chennai", createdAt:new Date(Date.now()-5400000).toISOString() },
-  { _id:"v5", shopName:"Daily Fresh Mart",      shopCode:"DF001", ownerName:"Rajan",   mobile:"9876540005", employeeName:"Rajan M",      fieldType:"Field Sales", followUpStatus:"not_interested",status:"Rejected", address:"55 North Ave, Chennai", createdAt:new Date(Date.now()-7200000).toISOString() },
-];
+import { getAllVisits } from "../api/visitsApi";
 
 const COLUMNS = [
-  { key:"shopName",      label:"Shop",       render: r => <div><p className="font-medium text-gray-900">{r.shopName}</p><p className="text-xs text-gray-400">{r.shopCode}</p></div> },
-  { key:"employeeName",  label:"Employee" },
-  { key:"mobile",        label:"Contact",    render: r => <span className="font-mono text-blue-600">+91 {r.mobile}</span> },
+  { key:"shopName",      label:"Shop",       render: r => <div><p className="font-medium text-gray-900">{r.shopName}</p><p className="text-xs text-gray-400">{r.shopCode || "—"}</p></div> },
+  { key:"employeeName",  label:"Employee",   render: r => r.employee?.name || "—" },
+  { key:"mobile",        label:"Contact",    render: r => r.mobile ? <span className="font-mono text-blue-600">+91 {r.mobile}</span> : "—" },
   { key:"fieldType",     label:"Type",       render: r => <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${r.fieldType==="Field Sales" ? "bg-blue-50 text-blue-700" : "bg-purple-50 text-purple-700"}`}>{r.fieldType}</span> },
-  { key:"followUpStatus",label:"Follow-up",  render: r => r.followUpStatus ? <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${FOLLOWUP_COLOR[r.followUpStatus]}`}>{FOLLOWUP_LABEL[r.followUpStatus]}</span> : "—" },
+  { key:"followUpStatus",label:"Follow-up",  render: r => r.followUp?.status ? <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${FOLLOWUP_COLOR[r.followUp.status]}`}>{FOLLOWUP_LABEL[r.followUp.status]}</span> : "—" },
   { key:"status",        label:"Status",     render: r => <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${STATUS_COLOR[r.status]}`}>{r.status}</span> },
   { key:"createdAt",     label:"Time",       render: r => <span className="text-gray-500">{formatDateTime(r.createdAt)}</span> },
 ];
@@ -30,13 +28,46 @@ export default function AllVisitsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter]     = useState("All");
+  const [visits, setVisits]   = useState([]);
+  const [total, setTotal]     = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
 
-  const filtered = DUMMY_VISITS.filter(v => {
+  useEffect(() => {
+    let active = true;
+    const fetchVisits = async () => {
+      setLoading(true);
+      try {
+        const data = await getAllVisits({
+          page: 1,
+          limit: 200,
+          status: statusFilter !== "All" ? statusFilter : undefined,
+          fieldType: typeFilter !== "All" ? typeFilter : undefined,
+        });
+        if (!active) return;
+        setVisits(data.visits || []);
+        setTotal(data.total || 0);
+        setError(null);
+      } catch (err) {
+        if (!active) return;
+        console.error("All visits fetch error:", err.message);
+        setError("Could not load visits. Please try again.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchVisits();
+    return () => { active = false; };
+  }, [statusFilter, typeFilter]);
+
+  const filtered = visits.filter(v => {
     const s = search.toLowerCase();
-    const matchSearch = v.shopName.toLowerCase().includes(s) || v.employeeName.toLowerCase().includes(s) || v.shopCode.toLowerCase().includes(s);
-    const matchStatus = statusFilter === "All" || v.status === statusFilter;
-    const matchType   = typeFilter   === "All" || v.fieldType === typeFilter;
-    return matchSearch && matchStatus && matchType;
+    if (!s) return true;
+    return (
+      (v.shopName || "").toLowerCase().includes(s) ||
+      (v.employee?.name || "").toLowerCase().includes(s) ||
+      (v.shopCode || "").toLowerCase().includes(s)
+    );
   });
 
   return (
@@ -58,14 +89,26 @@ export default function AllVisitsPage() {
         </div>
       </div>
 
-      <p className="text-xs text-gray-400 mb-3">{filtered.length} visit{filtered.length !== 1 ? "s" : ""} found</p>
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-2xl px-4 py-3 mb-5">{error}</div>
+      )}
 
-      <DataTable
-        columns={COLUMNS}
-        data={filtered}
-        onRowClick={(row) => navigate(`/all-visits/${row._id}`)}
-        emptyText="No visits match your filters"
-      />
+      <p className="text-xs text-gray-400 mb-3">
+        {loading ? "Loading..." : `${filtered.length} visit${filtered.length !== 1 ? "s" : ""} found${search ? "" : ` (of ${total} total)`}`}
+      </p>
+
+      {loading ? (
+        <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+          <p className="text-gray-400 text-sm">Loading visits...</p>
+        </div>
+      ) : (
+        <DataTable
+          columns={COLUMNS}
+          data={filtered}
+          onRowClick={(row) => navigate(`/visits/${row._id}`)}
+          emptyText="No visits match your filters"
+        />
+      )}
     </AdminLayout>
   );
 }
