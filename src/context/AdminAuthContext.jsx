@@ -1,9 +1,7 @@
 // FILE: src/context/AdminAuthContext.jsx
 // OWNER: Imran
-// CHANGE: Added verifyToken() on mount — when the admin dashboard reopens
-// with a stored token, it silently calls /api/admin/auth/me to confirm the
-// token is still valid. If valid → stay logged in. If expired → go to login.
-// ADMIN_JWT_EXPIRE on Render was extended to 30d so admins stay logged in.
+// CHANGE: Same fix as PWA AuthContext — only clear token on 401,
+// not on network errors (Render sleeping). Admin stays logged in.
 
 import { createContext, useContext, useState, useEffect } from "react";
 import axiosInstance from "../api/axiosInstance";
@@ -21,10 +19,10 @@ export function AdminAuthProvider({ children }) {
     return localStorage.getItem("maavu_admin_token") || null;
   });
 
-  // true while we verify the stored token on first load
-  const [checking, setChecking] = useState(!!localStorage.getItem("maavu_admin_token"));
+  const [checking, setChecking] = useState(
+    !!localStorage.getItem("maavu_admin_token")
+  );
 
-  // On app open — verify stored token with the backend
   useEffect(() => {
     const storedToken = localStorage.getItem("maavu_admin_token");
     if (!storedToken) { setChecking(false); return; }
@@ -35,11 +33,14 @@ export function AdminAuthProvider({ children }) {
         localStorage.setItem("maavu_admin", JSON.stringify(freshAdmin));
         setAdmin(freshAdmin);
       })
-      .catch(() => {
-        localStorage.removeItem("maavu_admin_token");
-        localStorage.removeItem("maavu_admin");
-        setToken(null);
-        setAdmin(null);
+      .catch((err) => {
+        // Only logout on 401 — keep admin logged in on network errors
+        if (err.response?.status === 401) {
+          localStorage.removeItem("maavu_admin_token");
+          localStorage.removeItem("maavu_admin");
+          setToken(null);
+          setAdmin(null);
+        }
       })
       .finally(() => setChecking(false));
   }, []);
@@ -58,7 +59,6 @@ export function AdminAuthProvider({ children }) {
     setAdmin(null);
   };
 
-  // Prevent login-page flash while token check runs
   if (checking) return null;
 
   return (
