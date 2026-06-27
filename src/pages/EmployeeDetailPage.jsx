@@ -12,9 +12,80 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import AdminLayout from "../components/AdminLayout";
 import { formatDate, formatTime, formatDateTime, STATUS_COLOR, FOLLOWUP_LABEL, FOLLOWUP_COLOR, getInitials } from "../utils/helpers";
-import { getEmployeeById } from "../api/employeesApi";
+import { getEmployeeById, resetEmployeePassword } from "../api/employeesApi";
 
 const WEEK_DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+// ── Password Reset Section (admin only) ─────────────────────
+// Admin sets a new password for the employee.
+// Password is hashed on backend — admin never sees the current hash.
+function PasswordResetSection({ empId, empName }) {
+  const [newPass, setNewPass]     = useState("");
+  const [showPass, setShowPass]   = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [success, setSuccess]     = useState(false);
+  const [error, setError]         = useState("");
+
+  const handleReset = async () => {
+    if (newPass.length < 6) { setError("Password must be at least 6 characters."); return; }
+    setSaving(true); setError(""); setSuccess(false);
+    try {
+      await resetEmployeePassword(empId, newPass);
+      setSuccess(true);
+      setNewPass("");
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to reset password.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
+      <div className="px-5 py-4 border-b border-amber-100">
+        <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide flex items-center gap-2">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+          </svg>
+          Reset Employee Password
+        </p>
+        <p className="text-xs text-amber-600 mt-1">Only use this if {empName} forgot their password and called you.</p>
+      </div>
+      <div className="px-5 py-4 flex items-center gap-3">
+        <div className="relative flex-1">
+          <input
+            type={showPass ? "text" : "password"}
+            value={newPass}
+            onChange={(e) => { setNewPass(e.target.value); setError(""); setSuccess(false); }}
+            placeholder="Enter new password (min 6 chars)"
+            className="w-full border border-amber-200 bg-white rounded-xl px-4 py-2.5 text-sm text-gray-800 outline-none focus:border-amber-400 pr-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPass((p) => !p)}
+            className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+          >
+            {showPass ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            )}
+          </button>
+        </div>
+        <button
+          disabled={saving || !newPass}
+          onClick={handleReset}
+          className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition flex-shrink-0"
+        >
+          {saving ? "Saving..." : "Reset"}
+        </button>
+      </div>
+      {error   && <p className="px-5 pb-3 text-xs text-red-500">{error}</p>}
+      {success && <p className="px-5 pb-3 text-xs text-green-600 font-semibold">✓ Password updated. Employee can now login with the new password.</p>}
+    </div>
+  );
+}
 
 export default function EmployeeDetailPage() {
   const { id }    = useParams();
@@ -380,6 +451,9 @@ export default function EmployeeDetailPage() {
               ))}
             </div>
           </div>
+
+          {/* ── PASSWORD RESET (Admin only) ── */}
+          <PasswordResetSection empId={emp._id} empName={emp.name} />
 
           {/* Live location (if online) */}
           {status === "Online" && hasLocation && (
