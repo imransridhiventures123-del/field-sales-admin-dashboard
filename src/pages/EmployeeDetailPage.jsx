@@ -87,6 +87,107 @@ function PasswordResetSection({ empId, empName }) {
   );
 }
 
+// ── Salary Edit Section (admin only) ─────────────────────────
+// Admin can update monthly salary anytime from Profile Info tab.
+// onUpdated callback updates emp.salary in parent state immediately
+// so the page reflects the new salary without a full reload.
+// Employee app syncs it on next pull-to-refresh in ProfilePage.
+function SalaryEditSection({ empId, currentSalary, onUpdated }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue]     = useState(String(currentSalary || ""));
+  const [saving, setSaving]   = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError]     = useState("");
+
+  const handleSave = async () => {
+    const num = Number(value);
+    if (!value || isNaN(num) || num < 1000) { setError("Enter valid salary (min ₹1000)."); return; }
+    setSaving(true); setError(""); setSuccess(false);
+    try {
+      await updateEmployeeProfile(empId, { salary: num });
+      onUpdated(num);
+      setSuccess(true);
+      setEditing(false);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to update salary.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Salary</p>
+        {!editing && (
+          <button
+            onClick={() => { setEditing(true); setValue(String(currentSalary || "")); setSuccess(false); }}
+            className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+            </svg>
+            Edit
+          </button>
+        )}
+      </div>
+      <div className="px-5 py-4">
+        {/* Current salary display */}
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs text-gray-400 mb-1">Monthly Salary</p>
+            <p className="text-2xl font-bold text-gray-900">
+              ₹{Number(currentSalary || 0).toLocaleString("en-IN")}
+              <span className="text-sm font-normal text-gray-400 ml-1">/month</span>
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              ≈ ₹{Math.round((currentSalary || 0) / 30).toLocaleString("en-IN")}/day cost
+            </p>
+          </div>
+          {success && (
+            <span className="text-xs text-green-600 font-semibold bg-green-50 px-3 py-1.5 rounded-full border border-green-200">
+              ✓ Updated — Employee will see it on next app open
+            </span>
+          )}
+        </div>
+        {/* Edit input */}
+        {editing && (
+          <div className="border-t border-gray-50 pt-4">
+            <p className="text-xs text-gray-400 mb-2">New Monthly Salary (₹)</p>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <span className="absolute left-3 top-2.5 text-gray-400 text-sm font-medium">₹</span>
+                <input
+                  type="number"
+                  value={value}
+                  onChange={(e) => { setValue(e.target.value); setError(""); }}
+                  placeholder="25000"
+                  className="w-full border border-gray-200 rounded-xl pl-7 pr-4 py-2.5 text-sm text-gray-800 outline-none focus:border-blue-400"
+                />
+              </div>
+              <button disabled={saving} onClick={handleSave}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition flex-shrink-0">
+                {saving ? "Saving..." : "Save"}
+              </button>
+              <button onClick={() => { setEditing(false); setError(""); }}
+                className="px-3 py-2.5 text-gray-400 hover:text-gray-600 text-sm">
+                Cancel
+              </button>
+            </div>
+            {value && !isNaN(Number(value)) && Number(value) >= 1000 && (
+              <p className="text-xs text-blue-500 mt-2">
+                ≈ ₹{Math.round(Number(value)/30).toLocaleString("en-IN")}/day · ₹{Math.round(Number(value)/4).toLocaleString("en-IN")}/week
+              </p>
+            )}
+            {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function EmployeeDetailPage() {
   const { id }    = useParams();
   const navigate  = useNavigate();
@@ -413,14 +514,16 @@ export default function EmployeeDetailPage() {
             </div>
           </div>
 
-          {/* Work details */}
+          {/* Work details — salary is editable */}
+          <SalaryEditSection empId={emp._id} currentSalary={emp.salary} onUpdated={(newSalary) => setEmp(p => ({ ...p, salary: newSalary }))} />
+
+          {/* Other work details (read-only) */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-50">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Work Details</p>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Work Stats</p>
             </div>
             <div className="divide-y divide-gray-50">
               {[
-                ["Salary",        emp.salary ? `₹${Number(emp.salary).toLocaleString("en-IN")}/month` : "—"],
                 ["Role",          emp.role ? emp.role.charAt(0).toUpperCase() + emp.role.slice(1) : "—"],
                 ["Joined",        formatDate(emp.createdAt)],
                 ["Total Visits",  stats.totalVisits],
