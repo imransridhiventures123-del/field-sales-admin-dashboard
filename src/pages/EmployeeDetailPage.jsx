@@ -12,7 +12,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import AdminLayout from "../components/AdminLayout";
 import { formatDate, formatTime, formatDateTime, STATUS_COLOR, FOLLOWUP_LABEL, FOLLOWUP_COLOR, getInitials } from "../utils/helpers";
-import { getEmployeeById, resetEmployeePassword } from "../api/employeesApi";
+import { getEmployeeById, resetEmployeePassword, updateEmployeeProfile } from "../api/employeesApi";
 
 const WEEK_DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
