@@ -3,7 +3,7 @@
 // Full zoom, satellite view, smooth moving markers, street view disabled
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader, InfoWindow, OverlayViewF, OVERLAY_MOUSE_TARGET } from "@react-google-maps/api";
 import AdminLayout    from "../components/AdminLayout";
 import { getInitials } from "../utils/helpers";
 import { getLiveLocations, getEmployees } from "../api/employeesApi";
@@ -33,18 +33,90 @@ function timeAgo(dateStr) {
   return `${Math.floor(m / 60)}h ago`;
 }
 
-// Custom map marker SVG — green pulsing dot for online employees
-function makeMarkerIcon(isSelected) {
-  const color  = isSelected ? "#1d4ed8" : "#16a34a";
-  const size   = isSelected ? 20 : 16;
-  return {
-    path: window.google?.maps?.SymbolPath?.CIRCLE ?? 0,
-    fillColor:    color,
-    fillOpacity:  1,
-    strokeColor:  "#fff",
-    strokeWeight: 3,
-    scale:        size / 2,
-  };
+// ── Employee Photo Marker ────────────────────────────────────
+// Shows employee photo (or initials if no photo) on the map
+// with a green pulsing ring and name label below.
+function PhotoMarker({ loc, isSelected, onClick }) {
+  const emp = loc.employee;
+  if (!emp || !loc.latitude || !loc.longitude) return null;
+
+  return (
+    <OverlayViewF
+      position={{ lat: loc.latitude, lng: loc.longitude }}
+      mapPaneName={OVERLAY_MOUSE_TARGET}
+      getPixelPositionOffset={(w, h) => ({ x: -w / 2, y: -h })}
+    >
+      <div
+        onClick={onClick}
+        style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", userSelect: "none" }}
+      >
+        {/* Pulsing ring */}
+        {isSelected && (
+          <div style={{
+            position: "absolute",
+            width: 56, height: 56,
+            borderRadius: "50%",
+            border: "3px solid #1d4ed8",
+            top: -4, left: "50%", transform: "translateX(-50%)",
+            animation: "pulse-ring 1.5s ease-out infinite",
+            opacity: 0.5,
+          }} />
+        )}
+
+        {/* Photo circle */}
+        <div style={{
+          width: 48, height: 48,
+          borderRadius: "50%",
+          overflow: "hidden",
+          border: `3px solid ${isSelected ? "#1d4ed8" : "#16a34a"}`,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.25)",
+          backgroundColor: "#dbeafe",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          position: "relative",
+        }}>
+          {emp.photo ? (
+            <img src={emp.photo} alt={emp.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            <span style={{ fontSize: 16, fontWeight: 700, color: "#1d4ed8" }}>
+              {getInitials(emp.name)}
+            </span>
+          )}
+          {/* Online indicator */}
+          <div style={{
+            position: "absolute", bottom: 1, right: 1,
+            width: 12, height: 12,
+            borderRadius: "50%",
+            backgroundColor: "#16a34a",
+            border: "2px solid white",
+          }} />
+        </div>
+
+        {/* Pin tail */}
+        <div style={{
+          width: 0, height: 0,
+          borderLeft: "6px solid transparent",
+          borderRight: "6px solid transparent",
+          borderTop: `8px solid ${isSelected ? "#1d4ed8" : "#16a34a"}`,
+          marginTop: -1,
+        }} />
+
+        {/* Name label */}
+        <div style={{
+          marginTop: 3,
+          backgroundColor: isSelected ? "#1d4ed8" : "rgba(0,0,0,0.7)",
+          color: "#fff",
+          fontSize: 11,
+          fontWeight: 600,
+          padding: "2px 8px",
+          borderRadius: 10,
+          whiteSpace: "nowrap",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
+        }}>
+          {emp.name.split(" ")[0]}
+        </div>
+      </div>
+    </OverlayViewF>
+  );
 }
 
 export default function LiveMapPage() {
@@ -227,22 +299,19 @@ export default function LiveMapPage() {
               options={MAP_OPTIONS}
               onLoad={onMapLoad}
             >
-              {/* Employee markers */}
-              {locations.map(loc => {
-                const emp = loc.employee;
-                if (!emp || !loc.latitude || !loc.longitude) return null;
-                const isSelected = selected?.employee?._id === emp._id;
-                return (
-                  <Marker
-                    key={emp._id}
-                    position={{ lat: loc.latitude, lng: loc.longitude }}
-                    icon={makeMarkerIcon(isSelected)}
-                    title={emp.name}
-                    onClick={() => setSelected(isSelected ? null : loc)}
-                    animation={isSelected ? window.google?.maps?.Animation?.BOUNCE : null}
-                  />
-                );
-              })}
+              {/* Employee photo markers */}
+              {locations.map(loc => (
+                <PhotoMarker
+                  key={loc.employee?._id}
+                  loc={loc}
+                  isSelected={selected?.employee?._id === loc.employee?._id}
+                  onClick={() => {
+                    const emp = loc.employee;
+                    if (!emp) return;
+                    setSelected(selected?.employee?._id === emp._id ? null : loc);
+                  }}
+                />
+              ))}
 
               {/* InfoWindow on selected employee */}
               {selected?.employee && selected.latitude && (
@@ -277,6 +346,12 @@ export default function LiveMapPage() {
           )}
         </div>
       </div>
+      <style>{`
+        @keyframes pulse-ring {
+          0%   { transform: translateX(-50%) scale(1); opacity: 0.5; }
+          100% { transform: translateX(-50%) scale(1.8); opacity: 0; }
+        }
+      `}</style>
     </AdminLayout>
   );
 }
