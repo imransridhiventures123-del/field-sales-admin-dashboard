@@ -6,3 +6,4 @@ export const updateTarget         = (id, target) => axiosInstance.put(`/api/admi
 export const resetEmployeePassword = (id, newPassword) => axiosInstance.put(`/api/admin/employees/${id}/password`, { newPassword }).then(r => r.data);
 export const updateEmployeeProfile  = (id, data) => axiosInstance.put(`/api/admin/employees/${id}/profile`, data).then(r => r.data);
 export const getLiveLocations = () => axiosInstance.get("/api/admin/locations/live").then(r => r.data);
+export const getEmployeeMonthlyReport = (id, month) => axiosInstance.get(`/api/admin/employees/${id}/monthly-report`, { params: { month } }).then(r => r.data);

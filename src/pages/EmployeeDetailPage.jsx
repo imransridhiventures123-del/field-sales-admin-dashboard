@@ -12,9 +12,111 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import AdminLayout from "../components/AdminLayout";
 import { formatDate, formatTime, formatDateTime, STATUS_COLOR, FOLLOWUP_LABEL, FOLLOWUP_COLOR, getInitials } from "../utils/helpers";
-import { getEmployeeById, resetEmployeePassword, updateEmployeeProfile } from "../api/employeesApi";
+import { getEmployeeById, resetEmployeePassword, updateEmployeeProfile, getEmployeeMonthlyReport } from "../api/employeesApi";
 
 const WEEK_DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+// ── Monthly PDF Report Generator ─────────────────────────────
+async function downloadMonthlyPDF(empId, month, empName) {
+  const { jsPDF }  = await import("jspdf");
+  const autoTable  = (await import("jspdf-autotable")).default;
+  const data       = await getEmployeeMonthlyReport(empId, month);
+
+  const doc  = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const blue = [29, 78, 216];
+  const gray = [107, 114, 128];
+
+  // Header
+  doc.setFillColor(...blue);
+  doc.rect(0, 0, 210, 36, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(18); doc.setFont("helvetica", "bold");
+  doc.text("Monthly Sales Report", 14, 14);
+  doc.setFontSize(10); doc.setFont("helvetica", "normal");
+  doc.text(`${data.employee.name}  ·  ${data.employee.employeeId}`, 14, 22);
+  doc.text(`Month: ${month}  ·  Generated: ${new Date().toLocaleDateString("en-IN")}`, 14, 30);
+
+  // Summary boxes
+  let y = 44;
+  const boxes = [
+    { label: "Total KG Sold",    value: `${data.totalKgSold} kg`,  sub: `Target: ${data.monthlyKgTarget} kg` },
+    { label: "Achievement",      value: `${data.achievementPct}%`, sub: "Monthly target" },
+    { label: "Total Shops",      value: `${data.totalVisits}`,     sub: "Shops visited" },
+    { label: "Orders Confirmed", value: `${data.totalOrders}`,     sub: "This month" },
+    { label: "Total Collection", value: `₹${Number(data.totalCollection).toLocaleString("en-IN")}`, sub: "Cash collected" },
+    { label: "Daily KG Target",  value: `${data.dailyKgTarget} kg`, sub: "Per day goal" },
+  ];
+
+  boxes.forEach((b, i) => {
+    const x  = 14 + (i % 3) * 62;
+    const by = y  + Math.floor(i / 3) * 26;
+    doc.setFillColor(239, 246, 255);
+    doc.roundedRect(x, by, 58, 22, 3, 3, "F");
+    doc.setTextColor(...blue); doc.setFontSize(14); doc.setFont("helvetica", "bold");
+    doc.text(b.value, x + 4, by + 10);
+    doc.setTextColor(...gray); doc.setFontSize(8); doc.setFont("helvetica", "normal");
+    doc.text(b.label, x + 4, by + 16);
+    doc.text(b.sub,   x + 4, by + 20);
+  });
+
+  y += 58;
+
+  // Daily table
+  doc.setTextColor(17, 24, 39); doc.setFontSize(11); doc.setFont("helvetica", "bold");
+  doc.text("Daily Breakdown", 14, y);
+  y += 4;
+
+  const activeDays = data.daily.filter(d => d.shopsVisited > 0 || d.kgSold > 0 || d.collection > 0);
+
+  autoTable(doc, {
+    startY: y,
+    head:   [["Date", "KG Sold", "vs Target", "Shops", "Orders", "Collection (₹)", "Shops List"]],
+    body:   activeDays.map(d => {
+      const pct     = data.dailyKgTarget > 0 ? Math.round((d.kgSold / data.dailyKgTarget) * 100) : 0;
+      const dateStr = new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", weekday: "short" });
+      return [
+        dateStr,
+        `${d.kgSold} kg`,
+        `${pct}%`,
+        d.shopsVisited,
+        d.ordersConfirmed,
+        d.collection > 0 ? `₹${d.collection.toLocaleString("en-IN")}` : "—",
+        d.shopNames.slice(0, 3).join(", ") + (d.shopNames.length > 3 ? "..." : ""),
+      ];
+    }),
+    headStyles:          { fillColor: blue, textColor: 255, fontSize: 8, fontStyle: "bold" },
+    bodyStyles:          { fontSize: 8, textColor: [31, 41, 55] },
+    alternateRowStyles:  { fillColor: [248, 250, 255] },
+    columnStyles: {
+      0: { cellWidth: 28 },
+      1: { cellWidth: 18, halign: "center" },
+      2: { cellWidth: 16, halign: "center" },
+      3: { cellWidth: 14, halign: "center" },
+      4: { cellWidth: 14, halign: "center" },
+      5: { cellWidth: 26, halign: "right"  },
+      6: { cellWidth: 70 },
+    },
+    didParseCell(hookData) {
+      if (hookData.column.index === 2 && hookData.section === "body") {
+        const pct = parseInt(hookData.cell.text[0]);
+        if (pct >= 100)      hookData.cell.styles.textColor = [22, 163, 74];
+        else if (pct === 0)  hookData.cell.styles.textColor = [156, 163, 175];
+        else                 hookData.cell.styles.textColor = [234, 88, 12];
+      }
+    },
+    margin: { left: 14, right: 14 },
+  });
+
+  // Footer
+  const pageH = doc.internal.pageSize.height;
+  doc.setFillColor(...blue);
+  doc.rect(0, pageH - 10, 210, 10, "F");
+  doc.setTextColor(255, 255, 255); doc.setFontSize(8);
+  doc.text("Sridhi Field Sales  ·  Confidential", 14, pageH - 3);
+  doc.text("Page 1", 196, pageH - 3, { align: "right" });
+
+  doc.save(`${empName.replace(/\s/g, "-")}-report-${month}.pdf`);
+}
 
 // ── Password Reset Section (admin only) ─────────────────────
 // Admin sets a new password for the employee.
@@ -260,16 +362,44 @@ export default function EmployeeDetailPage() {
   return (
     <AdminLayout title="Employee Detail">
 
-      {/* Back button */}
-      <button
-        onClick={() => navigate("/sales-team")}
-        className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 mb-5 transition"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
-        </svg>
-        Back to Sales Team
-      </button>
+      {/* Back + Download PDF row */}
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+        <button
+          onClick={() => navigate("/sales-team")}
+          className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 transition"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
+          </svg>
+          Back to Sales Team
+        </button>
+
+        {/* ── Monthly PDF Download ── */}
+        <div className="flex items-center gap-2">
+          <input
+            type="month"
+            defaultValue={new Date().toISOString().slice(0,7)}
+            id="report-month"
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 outline-none focus:border-blue-400"
+          />
+          <button
+            onClick={async () => {
+              const month = document.getElementById("report-month").value;
+              try {
+                await downloadMonthlyPDF(emp._id, month, emp.name);
+              } catch (err) {
+                alert("Could not generate PDF: " + (err.message || "Try again"));
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            Download Monthly PDF
+          </button>
+        </div>
+      </div>
 
       {/* ── PROFILE HEADER CARD ── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-5">
