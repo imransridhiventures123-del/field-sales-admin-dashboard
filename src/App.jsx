@@ -22,6 +22,7 @@ import AllVisitsPage     from "./pages/AllVisitsPage";
 import FollowUpsPage     from "./pages/FollowUpsPage";
 import AnalyticsPage     from "./pages/AnalyticsPage";
 import ReportsPage       from "./pages/ReportsPage";
+import DeliveriesPage    from "./pages/DeliveriesPage";
 import ShopsPage         from "./pages/ShopsPage";
 
 export default function App() {
@@ -47,7 +48,8 @@ export default function App() {
           <Route path="/all-visits" element={<AdminPrivateRoute><AllVisitsPage /></AdminPrivateRoute>} />
           <Route path="/follow-ups" element={<AdminPrivateRoute><FollowUpsPage /></AdminPrivateRoute>} />
           <Route path="/analytics"  element={<AdminPrivateRoute><AnalyticsPage /></AdminPrivateRoute>} />
-          <Route path="/reports"    element={<AdminPrivateRoute><ReportsPage /></AdminPrivateRoute>} />
+          <Route path="/reports"     element={<AdminPrivateRoute><ReportsPage /></AdminPrivateRoute>} />
+          <Route path="/deliveries"  element={<AdminPrivateRoute><DeliveriesPage /></AdminPrivateRoute>} />
           <Route path="/shops"      element={<AdminPrivateRoute><ShopsPage /></AdminPrivateRoute>} />
 
           {/* 404 */}
