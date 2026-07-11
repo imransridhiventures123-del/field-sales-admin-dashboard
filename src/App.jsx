@@ -25,6 +25,12 @@ import ReportsPage       from "./pages/ReportsPage";
 import DeliveriesPage    from "./pages/DeliveriesPage";
 import ShopsPage         from "./pages/ShopsPage";
 
+// ── NEW PAGES (additive) — Feature 1, 2, 3 ──
+import DriverLeadsPage     from "./pages/DriverLeadsPage";
+import CustomersPage       from "./pages/CustomersPage";
+import CustomerDetailPage  from "./pages/CustomerDetailPage";
+import SalesReportsPage    from "./pages/SalesReportsPage";
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -51,6 +57,12 @@ export default function App() {
           <Route path="/reports"     element={<AdminPrivateRoute><ReportsPage /></AdminPrivateRoute>} />
           <Route path="/deliveries"  element={<AdminPrivateRoute><DeliveriesPage /></AdminPrivateRoute>} />
           <Route path="/shops"      element={<AdminPrivateRoute><ShopsPage /></AdminPrivateRoute>} />
+
+          {/* NEW routes (additive) — Feature 1, 2, 3 */}
+          <Route path="/driver-leads"  element={<AdminPrivateRoute><DriverLeadsPage /></AdminPrivateRoute>} />
+          <Route path="/customers"     element={<AdminPrivateRoute><CustomersPage /></AdminPrivateRoute>} />
+          <Route path="/customers/:id" element={<AdminPrivateRoute><CustomerDetailPage /></AdminPrivateRoute>} />
+          <Route path="/sales-reports" element={<AdminPrivateRoute><SalesReportsPage /></AdminPrivateRoute>} />
 
           {/* 404 */}
           <Route path="*" element={<Navigate to="/login" replace />} />

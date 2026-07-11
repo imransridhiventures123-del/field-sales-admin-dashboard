@@ -1,6 +1,14 @@
 // FILE: src/pages/DeliveriesPage.jsx
+// CHANGE (feature 4, additive only): added a "Download Invoice PDF" button
+// next to the daily summary. It generates a PDF, entirely on the frontend
+// with jsPDF (same library already used by ReportsPage.jsx — no new
+// dependency added), listing every delivery assigned to the selected
+// driver on the selected date plus the total cash/GPay collected. Nothing
+// else on this page — and nothing on the mobile app — was changed.
 import { useState, useEffect, useRef, useCallback } from "react";
 import { GoogleMap, Marker, useLoadScript } from "@react-google-maps/api";
+import { jsPDF } from "jspdf";
+import { autoTable } from "jspdf-autotable";
 import AdminLayout from "../components/AdminLayout";
 import {
   getDrivers, getDriverDeliveries,
@@ -539,6 +547,57 @@ export default function DeliveriesPage() {
 
   const refresh = () => { setModal(null); loadDeliveries(); };
 
+  // NEW (feature 4): end-of-duty invoice PDF for the selected driver + date.
+  // Lists every delivery assigned that day with its status, quantity,
+  // payment type and amount received, plus a totals block at the end
+  // (total kg, total billed, total cash collected, total GPay collected,
+  // total still pending) — everything the admin needs after the driver
+  // finishes their duty and submits the completion form on the mobile app.
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
+  const downloadInvoice = () => {
+    if (!activeDriver || deliveries.length === 0) return;
+    setDownloadingInvoice(true);
+    try {
+      const doc = new jsPDF();
+      doc.setFontSize(16);
+      doc.setTextColor(30, 64, 175);
+      doc.text("Driver Delivery Invoice", 14, 18);
+      doc.setFontSize(10);
+      doc.setTextColor(120);
+      doc.text(`Driver: ${activeDriver.name}  (${activeDriver.employeeId || "—"})  ·  +91 ${activeDriver.mobile}`, 14, 25);
+      doc.text(`Date: ${new Date(date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`, 14, 30);
+
+      autoTable(doc, {
+        startY: 38,
+        head: [["#", "Shop", "Owner / Phone", "Qty (kg)", "Status", "Payment", "Received", "Pending"]],
+        body: deliveries.map((d, i) => [
+          d.sortOrder || i + 1,
+          d.shopName,
+          `${d.ownerName || "—"} / ${d.phone || "—"}`,
+          d.quantity,
+          d.status,
+          d.status === "completed" ? (d.paymentType === "gpay" ? "GPay" : d.paymentType) : "—",
+          d.status === "completed" ? `Rs.${fmt(d.amountReceived)}` : "—",
+          d.pendingAmount > 0 ? `Rs.${fmt(d.pendingAmount)}` : "—",
+        ]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [37, 99, 235] },
+      });
+
+      const finalY = (doc.lastAutoTable?.finalY || 38) + 8;
+      doc.setFontSize(11);
+      doc.setTextColor(30);
+      doc.text(`Total deliveries: ${summary.total}   Completed: ${summary.done}`, 14, finalY);
+      doc.text(`Total KG: ${summary.kg}kg   Total Billed: Rs.${fmt(summary.bill)}`, 14, finalY + 7);
+      doc.setTextColor(22, 101, 52);
+      doc.text(`Total Collected: Rs.${fmt(summary.paid)}`, 14, finalY + 14);
+      doc.setTextColor(185, 28, 28);
+      doc.text(`Still Pending: Rs.${fmt(summary.pending)}`, 14, finalY + 21);
+
+      doc.save(`invoice_${activeDriver.name.replace(/\s+/g, "-")}_${date}.pdf`);
+    } finally { setDownloadingInvoice(false); }
+  };
+
   const handleDelete=async(id)=>{
     if(!window.confirm("Delete this delivery?"))return;
     setDeleting(id);
@@ -564,6 +623,13 @@ export default function DeliveriesPage() {
         <div><h1 className="text-xl font-bold text-gray-900">Daily Deliveries</h1><p className="text-sm text-gray-500 mt-0.5">Assign and track driver deliveries</p></div>
         <div className="flex items-center gap-3">
           <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none"/>
+          {activeDriver&&deliveries.length>0&&(
+            <button onClick={downloadInvoice} disabled={downloadingInvoice}
+              className="px-4 py-2 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-800 disabled:opacity-50 flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3"/></svg>
+              {downloadingInvoice?"Generating...":"Download Invoice"}
+            </button>
+          )}
           <button onClick={()=>setDriverModal(true)} className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700">+ New Driver</button>
           {activeDriver&&<button onClick={()=>setModal("add")} className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700">+ Add Delivery</button>}
         </div>
