@@ -18,6 +18,30 @@ import { getLiveLocations } from "../api/employeesApi";
 
 const today    = () => new Date().toISOString().split("T")[0];
 const fmt      = (n) => Number(n||0).toLocaleString("en-IN");
+
+// FIX: some delivery documents in the DB predate later schema fields
+// (status, quantity, totalAmount, ownerName, phone, address, paymentType,
+// amountReceived, pendingAmount, sortOrder) — so the API can legitimately
+// return objects where these are missing/undefined. Every place in this
+// page that reads them (list cards, porter cards, map view, summary
+// totals) assumed they'd always be present and crashed on
+// `undefined.charAt(...)` / NaN math. Normalizing once, right where data
+// enters the component, means every downstream usage stays safe without
+// having to litter `|| ""` / `?.` everywhere.
+const normalizeDelivery = (d) => ({
+  ...d,
+  status:         d.status || "pending",
+  ownerName:      d.ownerName || "",
+  phone:          d.phone || "",
+  address:        d.address || "",
+  quantity:       Number(d.quantity) || 0,
+  totalAmount:    Number(d.totalAmount) || 0,
+  amountReceived: Number(d.amountReceived) || 0,
+  pendingAmount:  Number(d.pendingAmount) || 0,
+  paymentType:    d.paymentType || "pending",
+  sortOrder:      Number(d.sortOrder) || 0,
+});
+const normalizeList = (arr) => (arr || []).map(normalizeDelivery);
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || "";
 const LIBS     = [];
 const CHENNAI  = { lat: 13.0827, lng: 80.2707 };
@@ -420,8 +444,8 @@ export default function DeliveriesPage() {
       getDriverDeliveries(activeDriver._id, date, "delivery"),
       getDriverDeliveries(activeDriver._id, date, "porter"),
     ]).then(([main, por]) => {
-      setDeliveries(main.deliveries||[]);
-      setPorter(por.deliveries||[]);
+      setDeliveries(normalizeList(main.deliveries));
+      setPorter(normalizeList(por.deliveries));
     }).catch(console.error).finally(() => setLoading(false));
   }, [activeDriver, date]);
 
@@ -445,7 +469,7 @@ export default function DeliveriesPage() {
     Promise.all([
       getDriverDeliveries(activeDriver._id, date, "delivery"),
       getDriverDeliveries(activeDriver._id, date, "porter"),
-    ]).then(([main, por]) => { setDeliveries(main.deliveries||[]); setPorter(por.deliveries||[]); });
+    ]).then(([main, por]) => { setDeliveries(normalizeList(main.deliveries)); setPorter(normalizeList(por.deliveries)); });
   };
 
   const handleDelete = async (id) => {
@@ -478,7 +502,7 @@ export default function DeliveriesPage() {
             <div><p className="font-semibold text-gray-900">{d.shopName}</p><p className="text-xs text-gray-500">{d.ownerName} · {d.phone}</p></div>
             {d.status==="completed"
               ? <span className="text-xs font-semibold px-2 py-1 rounded-full bg-green-100 text-green-700 flex items-center gap-1">✅ Completed</span>
-              : <span className={`text-xs font-semibold px-2 py-1 rounded-full ${statusC[d.status]}`}>{d.status.charAt(0).toUpperCase()+d.status.slice(1)}</span>
+              : <span className={`text-xs font-semibold px-2 py-1 rounded-full ${statusC[d.status]||statusC.pending}`}>{d.status.charAt(0).toUpperCase()+d.status.slice(1)}</span>
             }
           </div>
           <p className="text-xs text-gray-400 mt-1">📍 {d.address}</p>
@@ -629,7 +653,7 @@ export default function DeliveriesPage() {
                           <span className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded-full font-semibold">₹{fmt(d.totalAmount)}</span>
                           {d.status==="completed"
                             ? <span className="text-xs font-semibold px-2 py-1 rounded-full bg-green-100 text-green-700">✅ Completed</span>
-                            : <span className={`text-xs font-semibold px-2 py-1 rounded-full ${statusC[d.status]}`}>{d.status.charAt(0).toUpperCase()+d.status.slice(1)}</span>
+                            : <span className={`text-xs font-semibold px-2 py-1 rounded-full ${statusC[d.status]||statusC.pending}`}>{d.status.charAt(0).toUpperCase()+d.status.slice(1)}</span>
                           }
                           {d.status==="completed"&&<button onClick={()=>setInvoiceFor(d)} className="px-3 py-1 text-xs font-semibold text-white bg-green-600 rounded-full hover:bg-green-700">Download Invoice</button>}
                         </div>
