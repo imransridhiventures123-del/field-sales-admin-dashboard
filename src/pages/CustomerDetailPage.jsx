@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AdminLayout from "../components/AdminLayout";
 import { formatDate, formatDateTime } from "../utils/helpers";
-import { getCustomerById, updateCustomerTag } from "../api/customerApi";
+import { getCustomerById, updateCustomerTag, updateWhatsappGroup } from "../api/customerApi";
 
 const fmt = (n) => Number(n || 0).toLocaleString("en-IN");
 const statusColor = { pending: "bg-amber-100 text-amber-700", completed: "bg-green-100 text-green-700", skipped: "bg-gray-100 text-gray-500" };
@@ -18,11 +18,14 @@ export default function CustomerDetailPage() {
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
   const [savingTag, setSavingTag]   = useState(false);
+  const [waGroup, setWaGroup]       = useState("");
+  const [savingWa, setSavingWa]     = useState(false);
+  const [waSaved, setWaSaved]       = useState(false);
 
   const load = () => {
     setLoading(true);
     getCustomerById(id)
-      .then(d => { setCustomer(d.customer); setDeliveries(d.deliveries || []); setError(null); })
+      .then(d => { setCustomer(d.customer); setDeliveries(d.deliveries || []); setWaGroup(d.customer?.whatsappGroupName || ""); setError(null); })
       .catch(e => { console.error(e); setError("Could not load this customer."); })
       .finally(() => setLoading(false));
   };
@@ -34,6 +37,13 @@ export default function CustomerDetailPage() {
     try { const d = await updateCustomerTag(id, tag); setCustomer(d.customer); }
     catch (e) { console.error(e); }
     finally { setSavingTag(false); }
+  };
+
+  const saveWaGroup = async () => {
+    setSavingWa(true); setWaSaved(false);
+    try { const d = await updateWhatsappGroup(id, waGroup.trim()); setCustomer(d.customer); setWaSaved(true); setTimeout(()=>setWaSaved(false), 2000); }
+    catch (e) { console.error(e); }
+    finally { setSavingWa(false); }
   };
 
   if (loading) return <AdminLayout title="Customer"><div className="h-40 bg-gray-100 rounded-2xl animate-pulse" /></AdminLayout>;
@@ -81,6 +91,28 @@ export default function CustomerDetailPage() {
           <div className="bg-gray-50 rounded-xl p-3"><p className="text-[10px] text-gray-400 uppercase">Total Orders</p><p className="text-lg font-bold text-gray-900">{customer.totalOrders}</p></div>
           <div className="bg-gray-50 rounded-xl p-3"><p className="text-[10px] text-gray-400 uppercase">Total Billed</p><p className="text-lg font-bold text-gray-900">₹{fmt(customer.totalAmount)}</p></div>
           <div className="bg-gray-50 rounded-xl p-3"><p className="text-[10px] text-gray-400 uppercase">Customer Since</p><p className="text-sm font-semibold text-gray-700">{formatDate(customer.firstDeliveryDate)}</p></div>
+        </div>
+
+        {/* WhatsApp group — used by the Daily Invoices feature to know which group gets this customer's invoice */}
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">WhatsApp Group Name</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={waGroup}
+              onChange={e => setWaGroup(e.target.value)}
+              placeholder="e.g. ABC Hotel Orders"
+              className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400"
+            />
+            <button
+              onClick={saveWaGroup}
+              disabled={savingWa || waGroup.trim() === (customer.whatsappGroupName||"")}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50"
+            >
+              {savingWa ? "Saving..." : waSaved ? "✓ Saved" : "Save"}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">Paste the exact WhatsApp group name — used to send this customer's daily invoice.</p>
         </div>
       </div>
 

@@ -30,6 +30,7 @@ import DriverLeadsPage     from "./pages/DriverLeadsPage";
 import CustomersPage       from "./pages/CustomersPage";
 import CustomerDetailPage  from "./pages/CustomerDetailPage";
 import SalesReportsPage    from "./pages/SalesReportsPage";
+import DailyInvoicesPage   from "./pages/DailyInvoicesPage";
 
 export default function App() {
   return (
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="/customers"     element={<AdminPrivateRoute><CustomersPage /></AdminPrivateRoute>} />
           <Route path="/customers/:id" element={<AdminPrivateRoute><CustomerDetailPage /></AdminPrivateRoute>} />
           <Route path="/sales-reports" element={<AdminPrivateRoute><SalesReportsPage /></AdminPrivateRoute>} />
+          <Route path="/daily-invoices" element={<AdminPrivateRoute><DailyInvoicesPage /></AdminPrivateRoute>} />
 
           {/* 404 */}
           <Route path="*" element={<Navigate to="/login" replace />} />

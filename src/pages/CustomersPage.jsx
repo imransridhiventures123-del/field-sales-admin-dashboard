@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import AdminLayout from "../components/AdminLayout";
 import { formatDate } from "../utils/helpers";
 import { getCustomers } from "../api/customerApi";
+import { downloadDailyOrderSheet } from "../api/dailyOrderSheetApi";
 
 export default function CustomersPage() {
   const navigate = useNavigate();
@@ -18,6 +19,21 @@ export default function CustomersPage() {
   const [error, setError]         = useState(null);
   const [search, setSearch]       = useState("");
   const [tagFilter, setTagFilter] = useState("");
+  const [sheetDate, setSheetDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [generating, setGenerating] = useState(false);
+  const [sheetError, setSheetError] = useState("");
+
+  const handleGenerateSheet = async () => {
+    setGenerating(true);
+    setSheetError("");
+    try {
+      await downloadDailyOrderSheet(sheetDate);
+    } catch (e) {
+      setSheetError(e.message || "Failed to generate the daily order sheet.");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -40,6 +56,30 @@ export default function CustomersPage() {
     <AdminLayout title="Customers">
       <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3 mb-5 text-xs text-blue-700">
         🏬 Every shop you deliver to shows up here automatically — matched by phone number, so the same customer never gets added twice.
+      </div>
+
+      {/* Daily Order Sheet — printable calling sheet for today's manual order collection */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">📋 Daily Order Sheet</p>
+          <p className="text-xs text-gray-400 mt-0.5">Printable sheet to call every customer and note today's quantity by hand.</p>
+          {sheetError && <p className="text-xs text-red-500 mt-1">{sheetError}</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={sheetDate}
+            onChange={e => setSheetDate(e.target.value)}
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 outline-none"
+          />
+          <button
+            onClick={handleGenerateSheet}
+            disabled={generating}
+            className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50"
+          >
+            {generating ? "Generating..." : "Generate Daily Order Sheet"}
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
