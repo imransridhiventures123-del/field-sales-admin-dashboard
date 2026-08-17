@@ -186,7 +186,7 @@ function NewDriverModal({ onSave, onClose }) {
 }
 
 // ── Add/Edit Delivery Modal ────────────────────────────────
-function DeliveryModal({ driverId, delivery, onSave, onClose }) {
+function DeliveryModal({ driverId, delivery, activeDate, onSave, onClose }) {
   const isEdit=!!delivery;
   const [shopName,setShopName]=useState(delivery?.shopName||"");
   const [ownerName,setOwnerName]=useState(delivery?.ownerName||"");
@@ -239,10 +239,20 @@ function DeliveryModal({ driverId, delivery, onSave, onClose }) {
         phone:phone.trim(), address:address.trim(),
         latitude:latitude?parseFloat(latitude):undefined, longitude:longitude?parseFloat(longitude):undefined,
         productName:productName.trim(), quantity:qtyNum, pricePerKg:priceNum, gstEnabled,
-        sortOrder:Number(sortOrder)||0, deliveryDate:today() };
+        sortOrder:Number(sortOrder)||0 };
       // NOTE: subtotal/gstAmount/totalAmount are intentionally NOT sent —
       // the backend always recomputes them from quantity+pricePerKg+gstEnabled
       // (Feature 14: never trust frontend math for money).
+      //
+      // deliveryDate handling:
+      // - New delivery -> use whatever date is currently selected on the
+      //   page (activeDate), NOT today() — otherwise assigning a delivery
+      //   while viewing e.g. 16-08 would silently save it under today's date.
+      // - Editing a delivery -> deliveryDate is NOT sent at all, so the
+      //   backend (which only overwrites fields present in req.body) leaves
+      //   the record's original date untouched. Sending today() here was
+      //   the old bug: every edit silently moved the record to today.
+      if (!isEdit) payload.deliveryDate = activeDate || today();
       if(isEdit) await updateDelivery(delivery._id,payload);
       else       await createDelivery(payload);
       saveShopToLocal({shopName:shopName.trim(),ownerName:ownerName.trim(),phone:phone.trim(),
@@ -525,7 +535,7 @@ export default function DeliveriesPage() {
 
   return (
     <AdminLayout title="Deliveries">
-      {modal!==null&&<DeliveryModal driverId={activeDriver?._id} delivery={modal==="add"?null:modal} onSave={refresh} onClose={()=>setModal(null)}/>}
+      {modal!==null&&<DeliveryModal driverId={activeDriver?._id} delivery={modal==="add"?null:modal} activeDate={date} onSave={refresh} onClose={()=>setModal(null)}/>}
       {driverModal&&<NewDriverModal onSave={()=>{setDriverModal(false);loadDrivers();}} onClose={()=>setDriverModal(false)}/>}
       {invoiceFor&&<InvoiceTypeModal delivery={invoiceFor} onClose={()=>setInvoiceFor(null)}/>}
 
