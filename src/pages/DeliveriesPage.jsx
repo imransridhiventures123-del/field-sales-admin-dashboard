@@ -40,8 +40,21 @@ const normalizeDelivery = (d) => ({
   pendingAmount:  Number(d.pendingAmount) || 0,
   paymentType:    d.paymentType || "pending",
   sortOrder:      Number(d.sortOrder) || 0,
+  gstEnabled:     Boolean(d.gstEnabled),
+  gstAmount:      Number(d.gstAmount) || 0,
 });
 const normalizeList = (arr) => (arr || []).map(normalizeDelivery);
+// FIX (GST not reflected on cards): `totalAmount` is intentionally stored
+// PRE-GST on the backend (see driverController's computeDeliveryPricing
+// comment — invoices apply GST separately at download time, so storing a
+// GST-inclusive totalAmount there would double-charge GST on the invoice
+// PDF). That's correct for invoicing, but every card in this page was
+// displaying that raw pre-GST totalAmount even when GST was ON — so a
+// delivery assigned with GST enabled showed a lower amount on its card
+// than what was actually confirmed at assign time. This computes the
+// GST-inclusive figure purely for card display, without touching how
+// totalAmount is stored or how invoices calculate GST.
+const cardTotal = (d) => Math.round(((d.totalAmount||0) + (d.gstEnabled ? (d.gstAmount||0) : 0) + Number.EPSILON) * 100) / 100;
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || "";
 const LIBS     = [];
 const CHENNAI  = { lat: 13.0827, lng: 80.2707 };
@@ -240,19 +253,18 @@ function DeliveryModal({ driverId, delivery, activeDate, onSave, onClose }) {
         latitude:latitude?parseFloat(latitude):undefined, longitude:longitude?parseFloat(longitude):undefined,
         productName:productName.trim(), quantity:qtyNum, pricePerKg:priceNum, gstEnabled,
         sortOrder:Number(sortOrder)||0 };
+      // FIX: deliveryDate used to be hardcoded to today() on every save —
+      // including EDIT. That silently moved an existing delivery's date to
+      // "today" on every edit, making it vanish from the date it was
+      // actually assigned on and reappear only under today's date.
+      // Now: new deliveries use whatever date is currently selected on the
+      // page (so assigning while viewing an older date stores it there,
+      // not on "today"); edits never touch deliveryDate at all, so the
+      // record stays on the day it was originally assigned to.
+      if (!isEdit) payload.deliveryDate = activeDate || today();
       // NOTE: subtotal/gstAmount/totalAmount are intentionally NOT sent —
       // the backend always recomputes them from quantity+pricePerKg+gstEnabled
       // (Feature 14: never trust frontend math for money).
-      //
-      // deliveryDate handling:
-      // - New delivery -> use whatever date is currently selected on the
-      //   page (activeDate), NOT today() — otherwise assigning a delivery
-      //   while viewing e.g. 16-08 would silently save it under today's date.
-      // - Editing a delivery -> deliveryDate is NOT sent at all, so the
-      //   backend (which only overwrites fields present in req.body) leaves
-      //   the record's original date untouched. Sending today() here was
-      //   the old bug: every edit silently moved the record to today.
-      if (!isEdit) payload.deliveryDate = activeDate || today();
       if(isEdit) await updateDelivery(delivery._id,payload);
       else       await createDelivery(payload);
       saveShopToLocal({shopName:shopName.trim(),ownerName:ownerName.trim(),phone:phone.trim(),
@@ -414,7 +426,7 @@ function DeliveryMapView({ deliveries, isLoaded, driverLocations }) {
           <p className="text-xs text-gray-400 mt-1">📍 {selected.address}</p>
           <div className="flex gap-2 mt-2">
             <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full font-semibold">{selected.quantity}kg</span>
-            <span className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded-full font-semibold">₹{fmt(selected.totalAmount)}</span>
+            <span className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded-full font-semibold">₹{fmt(cardTotal(selected))}</span>
           </div>
           <button onClick={() => setSelected(null)} className="mt-2 text-xs text-gray-400 hover:text-gray-600">Close ✕</button>
         </div>
@@ -519,7 +531,7 @@ export default function DeliveriesPage() {
           {d.latitude&&d.longitude&&<p className="text-[10px] text-gray-300 font-mono">{Number(d.latitude).toFixed(4)},{Number(d.longitude).toFixed(4)}</p>}
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-1 rounded-full">{d.quantity}kg</span>
-            <span className="text-xs font-semibold text-gray-700">₹{fmt(d.totalAmount)}</span>
+            <span className="text-xs font-semibold text-gray-700">₹{fmt(cardTotal(d))}</span>
             {d.status==="completed"&&<><span className={`text-xs font-semibold px-2 py-1 rounded-full ${payC[d.paymentType]}`}>{d.paymentType==="gpay"?"GPay":d.paymentType?.charAt(0).toUpperCase()+d.paymentType?.slice(1)}</span><span className="text-xs text-green-700">₹{fmt(d.amountReceived)}</span>{d.pendingAmount>0&&<span className="text-xs text-red-500">Pending ₹{fmt(d.pendingAmount)}</span>}</>}
           </div>
         </div>
@@ -660,7 +672,7 @@ export default function DeliveriesPage() {
                         {d.porterNote&&<p className="text-xs text-purple-600 mt-1 italic">📦 {d.porterNote}</p>}
                         <div className="flex gap-2 mt-2 flex-wrap items-center">
                           <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full font-semibold">{d.quantity}kg</span>
-                          <span className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded-full font-semibold">₹{fmt(d.totalAmount)}</span>
+                          <span className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded-full font-semibold">₹{fmt(cardTotal(d))}</span>
                           {d.status==="completed"
                             ? <span className="text-xs font-semibold px-2 py-1 rounded-full bg-green-100 text-green-700">✅ Completed</span>
                             : <span className={`text-xs font-semibold px-2 py-1 rounded-full ${statusC[d.status]||statusC.pending}`}>{d.status.charAt(0).toUpperCase()+d.status.slice(1)}</span>
