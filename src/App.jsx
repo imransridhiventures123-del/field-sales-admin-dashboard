@@ -42,6 +42,7 @@ import AllDistributorsPage    from "./pages/distributor-admin/AllDistributorsPag
 import AddDistributorPage     from "./pages/distributor-admin/AddDistributorPage";
 import DistributorsMapPage    from "./pages/distributor-admin/DistributorsMapPage";
 import DailyRequirementPage   from "./pages/distributor-admin/DailyRequirementPage";
+import ProductsPage           from "./pages/distributor-admin/ProductsPage";
 import DistributorDetailPage  from "./pages/distributor-admin/DistributorDetailPage";
 
 export default function App() {
@@ -87,6 +88,7 @@ export default function App() {
           <Route path="/distributor-admin/add"               element={<DistributorAdminRoute><AddDistributorPage /></DistributorAdminRoute>} />
           <Route path="/distributor-admin/map"               element={<DistributorAdminRoute><DistributorsMapPage /></DistributorAdminRoute>} />
           <Route path="/distributor-admin/daily-requirement" element={<DistributorAdminRoute><DailyRequirementPage /></DistributorAdminRoute>} />
+          <Route path="/distributor-admin/products" element={<DistributorAdminRoute><ProductsPage /></DistributorAdminRoute>} />
           <Route path="/distributor-admin/:id"               element={<DistributorAdminRoute><DistributorDetailPage /></DistributorAdminRoute>} />
 
           {/* 404 */}

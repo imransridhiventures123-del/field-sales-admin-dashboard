@@ -14,3 +14,11 @@ export const createDelivery      = (data)         => axiosInstance.post(`${BASE}
 export const updateDelivery      = (id,data)      => axiosInstance.put(`${BASE}/deliveries/${id}`,data).then(r=>r.data);
 export const deleteDelivery      = (id)           => axiosInstance.delete(`${BASE}/deliveries/${id}`).then(r=>r.data);
 export const searchShops         = (q)            => axiosInstance.get(`${BASE}/shops`,{params:{q}}).then(r=>r.data);
+
+
+export const getAdminDeliveries = (params = {}) =>
+  axiosInstance.get("/api/deliveries/admin", { params }).then((r) => r.data);
+
+export const getAdminDeliverySummary = (distributorId) =>
+  axiosInstance.get("/api/deliveries/admin/summary", { params: { distributorId } }).then((r) => r.data);
+ 

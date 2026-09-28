@@ -83,15 +83,27 @@ export default function DailyRequirementPage() {
   const [search, setSearch] = useState("");
   const [modalRequest, setModalRequest] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  // NEW — Feature: Daily Requirement date navigator. Lets admin go back
+  // (and forward, up to today) to see how many requests were
+  // approved/rejected/pending on any given day.
+  const [viewDate, setViewDate] = useState(new Date());
+  const toISODate = (d) => d.toISOString().slice(0, 10);
+  const isToday = (d) => toISODate(d) === toISODate(new Date());
+  const shiftDate = (delta) => {
+    const next = new Date(viewDate);
+    next.setDate(next.getDate() + delta);
+    if (toISODate(next) > toISODate(new Date())) return; // no future dates
+    setViewDate(next);
+  };
 
   const load = () => {
     setLoading(true);
-    getAllBatterRequests({})
+    getAllBatterRequests({ date: toISODate(viewDate) })
       .then((data) => setAllRequests(data.requests || []))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [viewDate]);
 
   const counts = TABS.reduce((acc, t) => {
     acc[t.key] = t.key ? allRequests.filter((r) => r.status === t.key).length : allRequests.length;
@@ -127,6 +139,23 @@ export default function DailyRequirementPage() {
             <span className={`w-5 h-5 rounded-full text-[11px] flex items-center justify-center ${filter === t.key ? "bg-white/20" : "bg-gray-100 text-gray-500"}`}>{counts[t.key]}</span>
           </button>
         ))}
+      </div>
+
+      {/* NEW — date navigator */}
+      <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 px-4 py-2.5 mb-4 max-w-xs">
+        <button onClick={() => shiftDate(-1)} className="text-gray-500 p-1">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
+        </button>
+        <span className="text-sm font-medium text-gray-700">
+          {isToday(viewDate) ? "Today" : viewDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+        </span>
+        <button
+          onClick={() => shiftDate(1)}
+          disabled={isToday(viewDate)}
+          className="text-gray-500 p-1 disabled:opacity-30"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+        </button>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -217,6 +246,13 @@ export default function DailyRequirementPage() {
                               <span>{c.idlyKg}kg idly · {c.dosaKg}kg dosa</span>
                             </div>
                           ))}
+                          {/* NEW — distributor's requested delivery date/time */}
+                          {r.requestedDeliveryDate && (
+                            <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-2 py-1 mt-1 inline-block">
+                              Distributor wants delivery by: {new Date(r.requestedDeliveryDate).toLocaleDateString("en-IN")}
+                              {r.requestedDeliveryTime && ` at ${r.requestedDeliveryTime}`}
+                            </p>
+                          )}
                           {r.deliveryTime && <p className="text-xs text-gray-500 mt-1">Delivery time: <b>{r.deliveryTime}</b></p>}
                           {r.adminNote && <p className="text-xs text-gray-500">Note: {r.adminNote}</p>}
                         </div>

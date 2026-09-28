@@ -15,6 +15,7 @@ import {
   assignCustomerToDistributor,
 } from "../../api/distributorApi";
 import { getCustomers } from "../../api/customerApi";
+import { getAdminDeliverySummary, getAdminDeliveries } from "../../api/deliveryApi";
 
 function CopyField({ icon, label, value }) {
   const [copied, setCopied] = useState(false);
@@ -55,6 +56,10 @@ export default function DistributorDetailPage() {
   const [newPassword, setNewPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [resetMsg, setResetMsg] = useState("");
+  // NEW (additive) — Feature: real-time distributor workflow. Margin/
+  // revenue/credit monitoring for this specific distributor.
+  const [summary, setSummary] = useState(null);
+  const [recentDeliveries, setRecentDeliveries] = useState([]);
 
   const load = () => {
     setLoading(true);
@@ -64,6 +69,12 @@ export default function DistributorDetailPage() {
   };
 
   useEffect(() => { load(); }, [id]);
+
+  // NEW (additive) — load this distributor's performance monitoring data
+  useEffect(() => {
+    getAdminDeliverySummary(id).then(setSummary).catch(() => {});
+    getAdminDeliveries({ distributorId: id }).then((d) => setRecentDeliveries(d.records || [])).catch(() => {});
+  }, [id]);
 
   useEffect(() => {
     getCustomers?.()
@@ -120,6 +131,41 @@ export default function DistributorDetailPage() {
         <GradientStatCard color="green"  icon="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0" label="Customers Assigned" value={customers.length} subtext={customers.length ? undefined : "No customers assigned yet"} />
         <GradientStatCard color="orange" icon="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" label="Stock (Idly/Dosa Kg)" value={`${distributor.currentStockKg?.idly || 0} / ${distributor.currentStockKg?.dosa || 0}`} />
       </div>
+
+      {/* NEW (additive) — Feature: real-time distributor workflow.
+          Margin/revenue/credit monitoring for this distributor, per
+          your feature #7 ("PWA se aatha sob data admin dashboard me
+          dhikaana"). */}
+      {summary && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          <GradientStatCard color="teal" icon="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 2v8m0 0v2m0-2c-1.11 0-2.08-.402-2.599-1" label="Today's Margin" value={`₹${summary.todayMargin}`} subtext={`Total: ₹${summary.totalMargin}`} />
+          <GradientStatCard color="green" icon="M9 7h6m-6 4h6m-6 4h4M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" label="Today's Collections" value={`₹${summary.todayCollections}`} subtext={`Revenue: ₹${summary.todayRevenue}`} />
+          <GradientStatCard color="orange" icon="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" label="Today's Credits" value={`₹${summary.todayCredits}`} subtext={`Total credits: ₹${summary.totalCredits}`} />
+          <GradientStatCard color="purple" icon="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" label="Total Revenue" value={`₹${summary.totalRevenue}`} subtext="All-time" />
+        </div>
+      )}
+
+      {recentDeliveries.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
+          <p className="font-semibold text-gray-800 mb-3">Recent Deliveries</p>
+          <div className="divide-y divide-gray-50">
+            {recentDeliveries.slice(0, 8).map((r) => (
+              <div key={r._id} className="flex items-center justify-between py-2.5 text-sm">
+                <div>
+                  <p className="font-medium text-gray-700">{r.shopName || r.customer?.shopName}</p>
+                  <p className="text-xs text-gray-400">{r.idlyKg}kg idly · {r.dosaKg}kg dosa · {new Date(r.date).toLocaleDateString("en-IN")}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-medium text-gray-700">₹{r.amountCharged}</p>
+                  <span className={`text-[11px] ${r.status === "skipped" ? "text-gray-400" : r.paymentStatus === "credit" ? "text-amber-600" : "text-green-600"}`}>
+                    {r.status === "skipped" ? "Skipped" : r.paymentStatus}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
