@@ -15,7 +15,7 @@ import { useNavigate } from "react-router-dom";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import AdminLayout from "../../components/AdminLayout";
+import DistributorAdminLayout from "../../components/DistributorAdminLayout";
 import { createDistributor, getZones, createZone } from "../../api/distributorApi";
 
 delete L.Icon.Default.prototype._getIconUrl;
@@ -80,7 +80,7 @@ export default function AddDistributorPage() {
 
   if (created) {
     return (
-      <AdminLayout title="Add Distributor">
+      <DistributorAdminLayout title="Add Distributor">
         <div className="max-w-lg mx-auto bg-white rounded-2xl border border-gray-100 shadow-sm p-8 text-center">
           <div className="w-14 h-14 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">✓</div>
           <h2 className="text-lg font-semibold text-gray-800 mb-1">Distributor created</h2>
@@ -98,12 +98,12 @@ export default function AddDistributorPage() {
             <button onClick={() => navigate("/distributor-admin/all")} className="flex-1 px-4 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-medium">Go to All Distributors</button>
           </div>
         </div>
-      </AdminLayout>
+      </DistributorAdminLayout>
     );
   }
 
   return (
-    <AdminLayout title="Add Distributor">
+    <DistributorAdminLayout title="Add Distributor">
       <form onSubmit={handleSubmit} className="max-w-2xl mx-auto bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
         {error && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl">{error}</div>}
 
@@ -172,6 +172,6 @@ export default function AddDistributorPage() {
           {saving ? "Creating…" : "Create Distributor & Generate Login"}
         </button>
       </form>
-    </AdminLayout>
+    </DistributorAdminLayout>
   );
 }

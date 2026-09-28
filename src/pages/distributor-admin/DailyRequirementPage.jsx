@@ -25,28 +25,47 @@ const TABS = [
   { key: "", label: "All", icon: "M4 6h16M4 10h16M4 14h16M4 18h16" },
 ];
 
+// NEW — Feature: admin-managed product catalog (Level 2). Quantities of
+// products other than Idly/Dosa as " · 3 packet Paneer Pack".
+const extrasText = (items) =>
+  (items || []).map((it) => ` · ${it.qty} ${it.unit || "kg"} ${it.productName || it.productKey}`).join("");
+
 function ApproveModal({ request, onClose, onDone }) {
   const [idlyKg, setIdlyKg] = useState(request.requestedIdlyKg);
   const [dosaKg, setDosaKg] = useState(request.requestedDosaKg);
+  // NEW — one approve box per other product the distributor asked for,
+  // pre-filled with the full requested quantity.
+  const [extraQty, setExtraQty] = useState(() => {
+    const init = {};
+    (request.requestedExtraItems || []).forEach((it) => { init[it.productKey] = it.qty; });
+    return init;
+  });
   const [deliveryTime, setDeliveryTime] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const submit = async () => {
     setSaving(true);
+    setError("");
     try {
       await approveBatterRequest(request._id, {
-        approvedIdlyKg: Number(idlyKg), approvedDosaKg: Number(dosaKg), deliveryTime, adminNote: note,
+        approvedIdlyKg: Number(idlyKg), approvedDosaKg: Number(dosaKg),
+        approvedExtraItems: (request.requestedExtraItems || []).map((it) => ({ productKey: it.productKey, qty: Number(extraQty[it.productKey]) || 0 })),
+        deliveryTime, adminNote: note,
       });
       onDone();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Couldn't approve this request. Please try again.");
     } finally { setSaving(false); }
   };
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[92vh] overflow-y-auto">
         <h3 className="font-semibold text-gray-800 mb-1">Approve Request — {request.distributor?.name}</h3>
-        <p className="text-xs text-gray-400 mb-4">Requested: {request.requestedIdlyKg}kg idly / {request.requestedDosaKg}kg dosa</p>
+        <p className="text-xs text-gray-400 mb-4">Requested: {request.requestedIdlyKg}kg idly / {request.requestedDosaKg}kg dosa{extrasText(request.requestedExtraItems)}</p>
+        {error && <div className="bg-red-50 text-red-600 text-xs px-3 py-2 rounded-xl mb-3">{error}</div>}
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
             <label className="text-xs font-medium text-gray-500">Idly batter to approve (kg)</label>
@@ -57,6 +76,21 @@ function ApproveModal({ request, onClose, onDone }) {
             <input type="number" value={dosaKg} onChange={(e) => setDosaKg(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-xl border border-gray-200 text-sm" />
           </div>
         </div>
+        {(request.requestedExtraItems || []).length > 0 && (
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            {request.requestedExtraItems.map((it) => (
+              <div key={it.productKey}>
+                <label className="text-xs font-medium text-gray-500">{it.productName || it.productKey} to approve ({it.unit || "kg"})</label>
+                <input
+                  type="number" min="0" value={extraQty[it.productKey] ?? ""}
+                  onChange={(e) => setExtraQty((q) => ({ ...q, [it.productKey]: e.target.value }))}
+                  className="mt-1 w-full px-3 py-2 rounded-xl border border-gray-200 text-sm"
+                />
+                <p className="text-[10px] text-gray-400 mt-0.5">Requested: {it.qty}</p>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="mb-3">
           <label className="text-xs font-medium text-gray-500">Delivery time</label>
           <input placeholder="e.g. 6:30 PM today" value={deliveryTime} onChange={(e) => setDeliveryTime(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-xl border border-gray-200 text-sm" />
@@ -218,8 +252,8 @@ export default function DailyRequirementPage() {
                     <td className="px-5 py-4 text-gray-500">{r.distributor?.zone?.name || "—"}</td>
                     <td className="px-5 py-4 text-gray-500">{new Date(r.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
                     <td className="px-5 py-4 text-gray-600">
-                      <p>Req: {r.requestedIdlyKg}kg idly / {r.requestedDosaKg}kg dosa</p>
-                      {r.status !== "pending" && <p className="text-xs text-gray-400">Approved: {r.approvedIdlyKg}kg / {r.approvedDosaKg}kg</p>}
+                      <p>Req: {r.requestedIdlyKg}kg idly / {r.requestedDosaKg}kg dosa{extrasText(r.requestedExtraItems)}</p>
+                      {r.status !== "pending" && <p className="text-xs text-gray-400">Approved: {r.approvedIdlyKg}kg / {r.approvedDosaKg}kg{extrasText(r.approvedExtraItems)}</p>}
                       <button onClick={() => setExpanded(expanded === r._id ? null : r._id)} className="text-[11px] text-teal-600 font-medium mt-1">
                         {expanded === r._id ? "Hide" : "View"} breakdown ({r.customerOrders?.length || 0})
                       </button>
@@ -241,9 +275,9 @@ export default function DailyRequirementPage() {
                       <td colSpan={8} className="px-5 pb-4 bg-gray-50">
                         <div className="pt-2 space-y-1">
                           {(r.customerOrders || []).map((c, idx) => (
-                            <div key={idx} className="flex justify-between text-xs text-gray-600 max-w-md">
+                            <div key={idx} className="flex justify-between gap-4 text-xs text-gray-600 max-w-xl">
                               <span>{c.shopName || "Customer"}</span>
-                              <span>{c.idlyKg}kg idly · {c.dosaKg}kg dosa</span>
+                              <span>{c.idlyKg}kg idly · {c.dosaKg}kg dosa{extrasText(c.extraItems)}</span>
                             </div>
                           ))}
                           {/* NEW — distributor's requested delivery date/time */}
