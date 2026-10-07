@@ -11,6 +11,7 @@ import GradientStatCard from "../../components/GradientStatCard";
 import { useAdminAuth } from "../../context/AdminAuthContext";
 import { getAllDistributors } from "../../api/distributorApi";
 import { getAllBatterRequests } from "../../api/batterRequestApi";
+import { getAdminTodayStatus } from "../../api/deliveryApi";
 
 export default function DistributorAdminDashboardPage() {
   const { admin } = useAdminAuth();
@@ -18,12 +19,15 @@ export default function DistributorAdminDashboardPage() {
   const [distributors, setDistributors] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  // NEW — today's shops ordered vs delivered (all distributors)
+  const [today, setToday] = useState(null);
 
   useEffect(() => {
-    Promise.all([getAllDistributors(), getAllBatterRequests({ status: "pending" })])
-      .then(([d, r]) => {
+    Promise.all([getAllDistributors(), getAllBatterRequests({ status: "pending" }), getAdminTodayStatus().catch(() => null)])
+      .then(([d, r, t]) => {
         setDistributors(d.distributors || []);
         setPendingRequests(r.requests || []);
+        setToday(t);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -71,6 +75,62 @@ export default function DistributorAdminDashboardPage() {
           color="orange" icon="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
           label="Pending Requests" value={loading ? "…" : pendingRequests.length} subtext="Awaiting your approval"
         />
+      </div>
+
+      {/* NEW — today's shops: how many shops had an order taken, how many were delivered */}
+      <div className="mb-6">
+        <p className="font-semibold text-gray-800 mb-3">Today's Shops</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <GradientStatCard
+            color="teal" icon="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17"
+            label="Shops Ordered" value={loading ? "…" : !today ? "—" : today.totals.shopsOrdered} subtext="Orders taken today"
+          />
+          <GradientStatCard
+            color="green" icon="M5 13l4 4L19 7"
+            label="Delivery Completed" value={loading ? "…" : !today ? "—" : today.totals.shopsDelivered} subtext={today ? `of ${today.totals.shopsOrdered} shops` : ""}
+          />
+          <GradientStatCard
+            color="orange" icon="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+            label="Still Pending" value={loading ? "…" : !today ? "—" : today.totals.shopsPending} subtext={today ? `${today.totals.shopsSkipped} skipped` : ""}
+          />
+          <GradientStatCard
+            color="purple" icon="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 2v8"
+            label="Collected Today" value={loading ? "…" : !today ? "—" : `₹${today.totals.cashCollected + today.totals.onlineCollected}`}
+            subtext={today ? `Cash ₹${today.totals.cashCollected} · GPay ₹${today.totals.onlineCollected} · Credit ₹${today.totals.creditGiven}` : ""}
+          />
+        </div>
+
+        {today && (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+            <table className="w-full text-sm min-w-[560px]">
+              <thead className="bg-gray-50 text-gray-400 text-[11px] uppercase tracking-wide">
+                <tr>
+                  <th className="text-left px-4 py-3 font-medium">Distributor</th>
+                  <th className="text-right px-3 py-3 font-medium">Ordered</th>
+                  <th className="text-right px-3 py-3 font-medium">Delivered</th>
+                  <th className="text-right px-3 py-3 font-medium">Pending</th>
+                  <th className="text-right px-3 py-3 font-medium">Cash</th>
+                  <th className="text-right px-3 py-3 font-medium">GPay</th>
+                  <th className="text-right px-4 py-3 font-medium">Credit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {today.distributors.map((d) => (
+                  <tr key={d.distributorId} onClick={() => navigate(`/distributor-admin/${d.distributorId}`)} className="hover:bg-gray-50 cursor-pointer">
+                    <td className="px-4 py-3 font-medium text-gray-800">{d.name} <span className="text-gray-400 font-normal text-xs">({d.employeeId})</span></td>
+                    <td className="px-3 py-3 text-right text-gray-600">{d.shopsOrdered}</td>
+                    <td className="px-3 py-3 text-right text-green-600 font-medium">{d.shopsDelivered}</td>
+                    <td className="px-3 py-3 text-right text-amber-600">{d.shopsPending}</td>
+                    <td className="px-3 py-3 text-right text-gray-600">₹{d.cashCollected}</td>
+                    <td className="px-3 py-3 text-right text-gray-600">₹{d.onlineCollected}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">₹{d.creditGiven}</td>
+                  </tr>
+                ))}
+                {today.distributors.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">No distributors yet.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">

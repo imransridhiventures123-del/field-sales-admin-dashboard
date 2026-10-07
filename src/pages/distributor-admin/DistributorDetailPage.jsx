@@ -14,8 +14,9 @@ import {
   resetDistributorPassword,
   assignCustomerToDistributor,
 } from "../../api/distributorApi";
-import { getCustomers } from "../../api/customerApi";
-import { getAdminDeliverySummary, getAdminDeliveries } from "../../api/deliveryApi";
+import { getCustomers, updateCustomerPricing } from "../../api/customerApi";
+import { getProducts } from "../../api/productApi";
+import { getAdminDeliverySummary, getAdminDeliveries, getAdminTodayStatus, getAdminLedger } from "../../api/deliveryApi";
 
 function CopyField({ icon, label, value }) {
   const [copied, setCopied] = useState(false);
@@ -56,6 +57,15 @@ export default function DistributorDetailPage() {
   const [newPassword, setNewPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [resetMsg, setResetMsg] = useState("");
+  // NEW — ask for this customer's pricing right when admin assigns them
+  // (the distributor can change it later from their Customers tab).
+  const [products, setProducts] = useState([]);
+  const [assignPrices, setAssignPrices] = useState({}); // { [productKey]: string }
+  const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState("");
+  // NEW — today's shop-by-shop status and the ledger for this distributor
+  const [todayStatus, setTodayStatus] = useState(null);
+  const [ledger, setLedger] = useState(null);
   // NEW (additive) — Feature: real-time distributor workflow. Margin/
   // revenue/credit monitoring for this specific distributor.
   const [summary, setSummary] = useState(null);
@@ -72,6 +82,9 @@ export default function DistributorDetailPage() {
 
   // NEW (additive) — load this distributor's performance monitoring data
   useEffect(() => {
+    getAdminTodayStatus(id).then(setTodayStatus).catch(() => {});
+    getAdminLedger(id).then(setLedger).catch(() => {});
+    getProducts().then((d) => setProducts((d.products || []).filter((p) => p.isActive !== false))).catch(() => {});
     getAdminDeliverySummary(id).then(setSummary).catch(() => {});
     getAdminDeliveries({ distributorId: id }).then((d) => setRecentDeliveries(d.records || [])).catch(() => {});
   }, [id]);
@@ -84,9 +97,25 @@ export default function DistributorDetailPage() {
 
   const handleAssign = async () => {
     if (!pickCustomer) return;
-    await assignCustomerToDistributor(id, pickCustomer);
-    setPickCustomer("");
-    load();
+    setAssignError("");
+    setAssigning(true);
+    try {
+      await assignCustomerToDistributor(id, pickCustomer);
+      // Save whatever price boxes were filled in; a blank box means "use the
+      // normal catalog price" for that product.
+      const items = Object.entries(assignPrices)
+        .filter(([, v]) => v !== "" && v !== null && v !== undefined)
+        .map(([productKey, v]) => ({ productKey, customerRatePerKg: Number(v) }));
+      if (items.length > 0) await updateCustomerPricing(pickCustomer, items);
+      setPickCustomer("");
+      setAssignPrices({});
+      load();
+      getAdminTodayStatus(id).then(setTodayStatus).catch(() => {});
+    } catch (err) {
+      setAssignError(err?.response?.data?.message || "Couldn't assign this customer. Please try again.");
+    } finally {
+      setAssigning(false);
+    }
   };
 
   const handleUnassign = async (customerId) => {
@@ -145,6 +174,81 @@ export default function DistributorDetailPage() {
         </div>
       )}
 
+      {/* NEW — today's shops: which shops this distributor took orders for, and their status */}
+      {todayStatus && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6" data-testid="today-shops">
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <p className="font-semibold text-gray-800">Today's Shops</p>
+            <div className="flex flex-wrap gap-1.5 text-[11px]">
+              <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-600">Ordered {todayStatus.totals.shopsOrdered}</span>
+              <span className="px-2 py-1 rounded-full bg-green-50 text-green-700">Delivered {todayStatus.totals.shopsDelivered}</span>
+              <span className="px-2 py-1 rounded-full bg-amber-50 text-amber-700">Pending {todayStatus.totals.shopsPending}</span>
+              <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-500">Skipped {todayStatus.totals.shopsSkipped}</span>
+            </div>
+          </div>
+          {(todayStatus.shops || []).length === 0 && <p className="text-sm text-gray-400">No orders taken today yet.</p>}
+          <div className="divide-y divide-gray-50">
+            {(todayStatus.shops || []).map((s, i) => (
+              <div key={i} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-800 truncate">{s.shopName} <span className="text-[10px] text-gray-400 font-normal">{s.source === "manual" ? "· added by distributor" : "· approved request"}</span></p>
+                  <p className="text-xs text-gray-400">{s.idlyKg}kg idly · {s.dosaKg}kg dosa{(s.extraItems || []).map((it) => ` · ${it.qty} ${it.unit || "kg"} ${it.productName || it.productKey}`).join("")}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ${s.status === "delivered" ? "bg-green-50 text-green-700" : s.status === "pending" ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
+                    {s.status === "delivered" ? "✓ Delivered" : s.status === "pending" ? "Pending" : "Skipped"}
+                  </span>
+                  {s.status === "delivered" && (
+                    <p className="text-[11px] text-gray-400 mt-0.5">₹{s.amountCharged} · Cash ₹{s.cashAmount} · GPay ₹{s.onlineAmount} · Credit ₹{s.creditAmount}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* NEW — this distributor's customer-wise ledger */}
+      {ledger && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6" data-testid="ledger">
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <p className="font-semibold text-gray-800">Ledger</p>
+            <span className="text-xs text-gray-500">Outstanding <b className="text-red-500">₹{ledger.totals.outstanding}</b> · Ordered ₹{ledger.totals.totalOrdered}</span>
+          </div>
+          {ledger.customerLedger.length === 0 && <p className="text-sm text-gray-400">No completed orders yet.</p>}
+          {ledger.customerLedger.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[560px]">
+                <thead className="text-gray-400 text-[11px] uppercase tracking-wide">
+                  <tr>
+                    <th className="text-left py-2 font-medium">Customer</th>
+                    <th className="text-right py-2 font-medium">Ordered</th>
+                    <th className="text-right py-2 font-medium">Cash</th>
+                    <th className="text-right py-2 font-medium">GPay</th>
+                    <th className="text-right py-2 font-medium">Credit</th>
+                    <th className="text-right py-2 font-medium">Paid back</th>
+                    <th className="text-right py-2 font-medium">Outstanding</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {ledger.customerLedger.map((c) => (
+                    <tr key={c.customerId}>
+                      <td className="py-2 font-medium text-gray-800">{c.shopName}</td>
+                      <td className="py-2 text-right text-gray-600">₹{c.totalOrdered}</td>
+                      <td className="py-2 text-right text-gray-600">₹{c.cashPaid}</td>
+                      <td className="py-2 text-right text-gray-600">₹{c.onlinePaid}</td>
+                      <td className="py-2 text-right text-amber-600">₹{c.creditGiven}</td>
+                      <td className="py-2 text-right text-gray-600">₹{c.received}</td>
+                      <td className={`py-2 text-right font-semibold ${c.outstanding > 0 ? "text-red-500" : "text-green-600"}`}>{c.outstanding > 0 ? `₹${c.outstanding}` : "Settled"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {recentDeliveries.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
           <p className="font-semibold text-gray-800 mb-3">Recent Deliveries</p>
@@ -157,8 +261,8 @@ export default function DistributorDetailPage() {
                 </div>
                 <div className="text-right">
                   <p className="font-medium text-gray-700">₹{r.amountCharged}</p>
-                  <span className={`text-[11px] ${r.status === "skipped" ? "text-gray-400" : r.paymentStatus === "credit" ? "text-amber-600" : "text-green-600"}`}>
-                    {r.status === "skipped" ? "Skipped" : r.paymentStatus}
+                  <span className={`text-[11px] ${r.status === "skipped" ? "text-gray-400" : r.status === "pending" || r.paymentStatus === "credit" ? "text-amber-600" : "text-green-600"}`}>
+                    {r.status === "skipped" ? "Skipped" : r.status === "pending" ? "Pending" : r.paymentStatus}
                   </span>
                 </div>
               </div>
@@ -198,7 +302,7 @@ export default function DistributorDetailPage() {
             <select
               id="assign-select"
               value={pickCustomer}
-              onChange={(e) => setPickCustomer(e.target.value)}
+              onChange={(e) => { setPickCustomer(e.target.value); setAssignPrices({}); setAssignError(""); }}
               className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 max-w-[160px]"
             >
               <option value="">All Customers</option>
@@ -206,9 +310,33 @@ export default function DistributorDetailPage() {
             </select>
           </div>
           {pickCustomer && (
-            <button onClick={handleAssign} className="w-full mb-4 py-2 rounded-xl bg-teal-50 text-teal-600 text-xs font-medium">
-              Confirm assign selected customer
-            </button>
+            <div className="mb-4 bg-gray-50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-gray-600 mb-1">Set this customer's pricing (optional)</p>
+              <p className="text-[11px] text-gray-400 mb-3">Leave a box empty to use the normal catalog price. The distributor can change it later.</p>
+              {assignError && <div className="bg-red-50 text-red-600 text-xs px-3 py-2 rounded-lg mb-3" role="alert">{assignError}</div>}
+              <div className="space-y-2 mb-3">
+                {products.map((p) => (
+                  <div key={p.key} className="flex items-center gap-2">
+                    <span className="flex-1 text-xs text-gray-700">{p.name}</span>
+                    <span className="text-[10px] text-gray-400">catalog ₹{p.customerRatePerKg}</span>
+                    <div className="relative w-24">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">₹</span>
+                      <input
+                        type="number" min="0" aria-label={`${p.name} price`}
+                        value={assignPrices[p.key] ?? ""}
+                        onChange={(e) => setAssignPrices((prev) => ({ ...prev, [p.key]: e.target.value }))}
+                        placeholder="default"
+                        className="w-full pl-5 pr-2 py-1 rounded-md border border-gray-200 text-xs"
+                      />
+                    </div>
+                  </div>
+                ))}
+                {products.length === 0 && <p className="text-[11px] text-gray-400">No products in the catalog yet.</p>}
+              </div>
+              <button onClick={handleAssign} disabled={assigning} className="w-full py-2 rounded-xl bg-teal-50 text-teal-600 text-xs font-medium disabled:opacity-60">
+                {assigning ? "Assigning…" : "Confirm assign selected customer"}
+              </button>
+            </div>
           )}
 
           {filteredCustomers.length === 0 ? (

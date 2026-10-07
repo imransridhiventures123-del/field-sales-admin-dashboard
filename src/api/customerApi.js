@@ -13,3 +13,5 @@ export const updateCustomerTag  = (id, tag)   => axiosInstance.put(`${BASE}/${id
 // NEW — Daily Invoice feature: admin saves the exact WhatsApp group name for this customer.
 export const updateWhatsappGroup = (id, whatsappGroupName) => axiosInstance.put(`${BASE}/${id}/whatsapp`, { whatsappGroupName }).then(r => r.data);
 export const deleteCustomer     = (id)        => axiosInstance.delete(`${BASE}/${id}`).then(r => r.data);
+// NEW — Feature: per-customer pricing. items = [{ productKey, customerRatePerKg }]
+export const updateCustomerPricing = (id, items) => axiosInstance.put(`${BASE}/${id}/pricing`, { items }).then(r => r.data);
