@@ -22,3 +22,10 @@ export const getAdminDeliveries = (params = {}) =>
 export const getAdminDeliverySummary = (distributorId) =>
   axiosInstance.get("/api/deliveries/admin/summary", { params: { distributorId } }).then((r) => r.data);
  
+// NEW — Feature: today's shops ordered vs delivered, and the ledger.
+// With a distributorId the response also lists that distributor's shops.
+export const getAdminTodayStatus = (distributorId) =>
+  axiosInstance.get("/api/deliveries/admin/today-status", { params: distributorId ? { distributorId } : {} }).then((r) => r.data);
+
+export const getAdminLedger = (distributorId) =>
+  axiosInstance.get("/api/deliveries/admin/ledger", { params: { distributorId } }).then((r) => r.data);

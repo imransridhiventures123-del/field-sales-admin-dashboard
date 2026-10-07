@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AdminLayout from "../components/AdminLayout";
 import { formatDate, formatDateTime } from "../utils/helpers";
-import { getCustomerById, updateCustomerTag, updateWhatsappGroup } from "../api/customerApi";
+import { getCustomerById, updateCustomerTag, updateWhatsappGroup, updateCustomerPricing } from "../api/customerApi";
+import { getProducts } from "../api/productApi";
 
 const fmt = (n) => Number(n || 0).toLocaleString("en-IN");
 const statusColor = { pending: "bg-amber-100 text-amber-700", completed: "bg-green-100 text-green-700", skipped: "bg-gray-100 text-gray-500" };
@@ -21,11 +22,23 @@ export default function CustomerDetailPage() {
   const [waGroup, setWaGroup]       = useState("");
   const [savingWa, setSavingWa]     = useState(false);
   const [waSaved, setWaSaved]       = useState(false);
+  // NEW — Feature: per-customer custom pricing
+  const [products, setProducts]     = useState([]);
+  const [prices, setPrices]         = useState({}); // { [productKey]: string — "" means "use catalog default" }
+  const [savingPricing, setSavingPricing] = useState(false);
+  const [pricingSaved, setPricingSaved]   = useState(false);
+  const [pricingError, setPricingError]   = useState("");
 
   const load = () => {
     setLoading(true);
-    getCustomerById(id)
-      .then(d => { setCustomer(d.customer); setDeliveries(d.deliveries || []); setWaGroup(d.customer?.whatsappGroupName || ""); setError(null); })
+    Promise.all([getCustomerById(id), getProducts()])
+      .then(([d, p]) => {
+        setCustomer(d.customer); setDeliveries(d.deliveries || []); setWaGroup(d.customer?.whatsappGroupName || ""); setError(null);
+        setProducts((p.products || []).filter((x) => x.isActive !== false));
+        const initial = {};
+        (d.customer?.customPricing || []).forEach((it) => { initial[it.productKey] = String(it.customerRatePerKg); });
+        setPrices(initial);
+      })
       .catch(e => { console.error(e); setError("Could not load this customer."); })
       .finally(() => setLoading(false));
   };
@@ -44,6 +57,23 @@ export default function CustomerDetailPage() {
     try { const d = await updateWhatsappGroup(id, waGroup.trim()); setCustomer(d.customer); setWaSaved(true); setTimeout(()=>setWaSaved(false), 2000); }
     catch (e) { console.error(e); }
     finally { setSavingWa(false); }
+  };
+
+  // NEW — Feature: per-customer custom pricing. Only products with a
+  // non-empty box are sent — leaving a box blank means "use the normal
+  // catalog price for this customer".
+  const savePricing = async () => {
+    setPricingError(""); setSavingPricing(true); setPricingSaved(false);
+    try {
+      const items = Object.entries(prices)
+        .filter(([, v]) => v !== "" && v !== null && v !== undefined)
+        .map(([productKey, v]) => ({ productKey, customerRatePerKg: Number(v) }));
+      const d = await updateCustomerPricing(id, items);
+      setCustomer(d.customer);
+      setPricingSaved(true); setTimeout(() => setPricingSaved(false), 2000);
+    } catch (e) {
+      setPricingError(e?.response?.data?.message || "Couldn't save pricing.");
+    } finally { setSavingPricing(false); }
   };
 
   if (loading) return <AdminLayout title="Customer"><div className="h-40 bg-gray-100 rounded-2xl animate-pulse" /></AdminLayout>;
@@ -113,6 +143,56 @@ export default function CustomerDetailPage() {
             </button>
           </div>
           <p className="text-xs text-gray-400 mt-1">Paste the exact WhatsApp group name — used to send this customer's daily invoice.</p>
+        </div>
+
+        {/* NEW — Feature: per-customer custom pricing */}
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Pricing for this customer</label>
+
+          {customer.addedByDistributor ? (
+            <div className="bg-amber-50 border border-amber-100 text-amber-700 text-sm rounded-xl px-4 py-3">
+              This customer was added by their distributor — only the distributor can set pricing for them.
+              {(customer.customPricing || []).length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {customer.customPricing.map((it) => {
+                    const p = products.find((x) => x.key === it.productKey);
+                    return <p key={it.productKey} className="text-xs">{p?.name || it.productKey}: ₹{it.customerRatePerKg}/{p?.unit || "kg"} <span className="text-amber-500">(distributor's price)</span></p>;
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-gray-400 mb-3">Leave a box empty to use the normal catalog price for that product. Fill it in to charge this customer a different rate.</p>
+              {pricingError && <div className="bg-red-50 text-red-600 text-xs px-3 py-2 rounded-xl mb-3">{pricingError}</div>}
+              <div className="space-y-2 mb-3">
+                {products.map((p) => (
+                  <div key={p.key} className="flex items-center gap-3">
+                    <span className="flex-1 text-sm text-gray-700">{p.name}</span>
+                    <span className="text-xs text-gray-400">catalog: ₹{p.customerRatePerKg}/{p.unit || "kg"}</span>
+                    <div className="relative w-32">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">₹</span>
+                      <input
+                        type="number" min="0"
+                        value={prices[p.key] ?? ""}
+                        onChange={(e) => setPrices((prev) => ({ ...prev, [p.key]: e.target.value }))}
+                        placeholder="default"
+                        className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-gray-200 text-sm"
+                      />
+                    </div>
+                  </div>
+                ))}
+                {products.length === 0 && <p className="text-xs text-gray-400">No products in the catalog yet.</p>}
+              </div>
+              <button
+                onClick={savePricing}
+                disabled={savingPricing}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50"
+              >
+                {savingPricing ? "Saving..." : pricingSaved ? "✓ Saved" : "Save Pricing"}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
