@@ -9,6 +9,7 @@ import { useEffect, useState, Fragment } from "react";
 import DistributorAdminLayout from "../../components/DistributorAdminLayout";
 import EmptyStateIllustration from "../../components/EmptyStateIllustration";
 import { getAllBatterRequests, approveBatterRequest, rejectBatterRequest } from "../../api/batterRequestApi";
+import { getAllProductRequests, approveProductRequest, rejectProductRequest } from "../../api/productRequestApi";
 
 const STATUS_STYLE = {
   pending: "bg-amber-50 text-amber-600",
@@ -110,6 +111,190 @@ function ApproveModal({ request, onClose, onDone }) {
   );
 }
 
+/* ══════════════════ NEW — Product Requests section ══════════════════ */
+const fmtDay = (s) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s || "")) return s || "—";
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+};
+const fmtClock = (s) => {
+  if (!/^\d{2}:\d{2}$/.test(s || "")) return s || "";
+  let [h, m] = s.split(":").map(Number);
+  const ap = h >= 12 ? "PM" : "AM";
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ap}`;
+};
+const rupees = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
+
+function ProductApproveModal({ request, onClose, onDone }) {
+  const [qtys, setQtys] = useState(() => Object.fromEntries(request.items.map((it) => [it.productKey, it.qty])));
+  const [deliveryDate, setDeliveryDate] = useState(request.requestedDeliveryDate || "");
+  const [deliveryTime, setDeliveryTime] = useState(request.requestedDeliveryTime || "");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    setError("");
+    if (!deliveryDate || !deliveryTime) { setError("Please choose the delivery day and time."); return; }
+    setSaving(true);
+    try {
+      await approveProductRequest(request._id, {
+        approvedItems: request.items.map((it) => ({ productKey: it.productKey, qty: Number(qtys[it.productKey]) || 0 })),
+        deliveryDate, deliveryTime, adminNote: note,
+      });
+      onDone();
+    } catch (e) {
+      setError(e?.response?.data?.message || "Could not approve. Please try again.");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <h3 className="font-semibold text-gray-800 mb-1">Approve Product Request — {request.distributor?.name}</h3>
+        <p className="text-xs text-gray-400 mb-4">Distributor wants it on {fmtDay(request.requestedDeliveryDate)} at {fmtClock(request.requestedDeliveryTime)}</p>
+
+        <div className="space-y-2 mb-4">
+          {request.items.map((it) => (
+            <div key={it.productKey} className="flex items-center justify-between gap-3">
+              <div className="text-sm text-gray-700">
+                {it.productName}
+                <span className="block text-[11px] text-gray-400">Requested {it.qty} {it.unit} · {rupees(it.ratePerUnit)}/{it.unit}</span>
+              </div>
+              <input type="number" min="0" max={it.qty} value={qtys[it.productKey]} onChange={(e) => setQtys({ ...qtys, [it.productKey]: e.target.value })} className="w-24 px-3 py-2 rounded-xl border border-gray-200 text-sm" />
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-xs font-medium text-gray-500">Delivery day</label>
+            <input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-xl border border-gray-200 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500">Delivery time</label>
+            <input type="time" value={deliveryTime} onChange={(e) => setDeliveryTime(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-xl border border-gray-200 text-sm" />
+          </div>
+        </div>
+        <div className="mb-4">
+          <label className="text-xs font-medium text-gray-500">Note to distributor (optional)</label>
+          <input placeholder="e.g. Only 30kg available today" value={note} onChange={(e) => setNote(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-xl border border-gray-200 text-sm" />
+        </div>
+        <p className="text-[11px] text-gray-400 mb-3">Approving adds the approved Idly / Dosa kg to this distributor's batter stock and sends them a notification.</p>
+        {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium">Cancel</button>
+          <button onClick={submit} disabled={saving} className="flex-1 px-4 py-2.5 rounded-xl bg-teal-600 text-white text-sm font-medium disabled:opacity-60">
+            {saving ? "Saving…" : "Confirm Approval"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductRequestsSection({ onChanged }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("pending");
+  const [modal, setModal] = useState(null);
+
+  const load = () => {
+    setLoading(true);
+    getAllProductRequests()
+      .then((d) => setRequests(d.requests || []))
+      .finally(() => setLoading(false));
+    if (onChanged) onChanged();
+  };
+  useEffect(() => { load(); }, []);
+
+  const count = (k) => (k ? requests.filter((r) => r.status === k).length : requests.length);
+  const shown = requests.filter((r) => !filter || r.status === filter);
+
+  const reject = async (id) => {
+    const note = window.prompt("Reason for rejecting (optional):", "");
+    if (note === null) return;
+    await rejectProductRequest(id, note);
+    load();
+  };
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {TABS.map((t) => (
+          <button key={t.key || "all"} onClick={() => setFilter(t.key)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium ${filter === t.key ? "bg-teal-600 text-white" : "bg-white border border-gray-200 text-gray-500"}`}>
+            {t.label}
+            <span className={`w-5 h-5 rounded-full text-[11px] flex items-center justify-center ${filter === t.key ? "bg-white/20" : "bg-gray-100 text-gray-500"}`}>{count(t.key)}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {loading && <div className="text-center text-gray-400 py-14">Loading…</div>}
+        {!loading && shown.length === 0 && <div className="text-center text-gray-400 py-14 text-sm">No product requests for this filter.</div>}
+        {!loading && shown.length > 0 && (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-gray-400 text-[11px] uppercase tracking-wide">
+              <tr>
+                <th className="text-left px-5 py-3 font-medium">Distributor</th>
+                <th className="text-left px-5 py-3 font-medium">Products</th>
+                <th className="text-left px-5 py-3 font-medium">Wants it on</th>
+                <th className="text-left px-5 py-3 font-medium">Status</th>
+                <th className="text-right px-5 py-3 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {shown.map((r) => (
+                <tr key={r._id} className="hover:bg-gray-50 align-top">
+                  <td className="px-5 py-4">
+                    <p className="font-medium text-gray-800">{r.distributor?.name}</p>
+                    <p className="text-xs text-gray-400">{r.distributor?.employeeId}{r.distributor?.zone?.name ? ` · ${r.distributor.zone.name}` : ""}</p>
+                    <p className="text-[11px] text-gray-300 mt-0.5">{new Date(r.createdAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                  </td>
+                  <td className="px-5 py-4 text-gray-600">
+                    {r.items.map((it) => (
+                      <p key={it.productKey}>
+                        {it.productName}: <b>{it.qty} {it.unit}</b>
+                        <span className="text-xs text-gray-400"> × {rupees(it.ratePerUnit)}</span>
+                        {r.status !== "pending" && r.status !== "rejected" && <span className="text-xs text-teal-600"> (approved {it.approvedQty})</span>}
+                      </p>
+                    ))}
+                    <p className="text-xs text-gray-500 mt-1">Total: <b>{rupees(r.totalAmount)}</b></p>
+                    {r.distributorNote && <p className="text-xs text-gray-400 mt-0.5">Note: {r.distributorNote}</p>}
+                  </td>
+                  <td className="px-5 py-4 text-gray-600">
+                    <p>{fmtDay(r.requestedDeliveryDate)}</p>
+                    <p className="text-xs text-gray-400">{fmtClock(r.requestedDeliveryTime)}</p>
+                    {r.deliveryDate && r.status !== "rejected" && (
+                      <p className="text-xs text-teal-600 mt-1">Admin sends: {fmtDay(r.deliveryDate)} {fmtClock(r.deliveryTime)}</p>
+                    )}
+                    {r.adminNote && <p className="text-xs text-gray-400 mt-0.5">Admin note: {r.adminNote}</p>}
+                  </td>
+                  <td className="px-5 py-4">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_STYLE[r.status]}`}>{r.status.replace("_", " ")}</span>
+                  </td>
+                  <td className="px-5 py-4 text-right whitespace-nowrap">
+                    {r.status === "pending" ? (
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => reject(r._id)} className="px-3 py-1.5 rounded-lg border border-red-200 text-red-500 text-xs font-medium">Reject</button>
+                        <button onClick={() => setModal(r)} className="px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-medium">Approve</button>
+                      </div>
+                    ) : <span className="text-xs text-gray-300">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {modal && <ProductApproveModal request={modal} onClose={() => setModal(null)} onDone={() => { setModal(null); load(); }} />}
+    </>
+  );
+}
+
+
 export default function DailyRequirementPage() {
   const [allRequests, setAllRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -117,6 +302,12 @@ export default function DailyRequirementPage() {
   const [search, setSearch] = useState("");
   const [modalRequest, setModalRequest] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  // NEW — "Batter Requests" vs "Product Requests" toggle
+  const [section, setSection] = useState("batter");
+  const [productPending, setProductPending] = useState(0);
+  const refreshProductPending = () =>
+    getAllProductRequests({ status: "pending" }).then((d) => setProductPending(d.pendingCount || 0)).catch(() => {});
+  useEffect(() => { refreshProductPending(); }, []);
   // NEW — Feature: Daily Requirement date navigator. Lets admin go back
   // (and forward, up to today) to see how many requests were
   // approved/rejected/pending on any given day.
@@ -161,6 +352,19 @@ export default function DailyRequirementPage() {
       title="Daily Requirement"
       subtitle="View and manage daily distributor requirements"
     >
+      {/* NEW — section toggle */}
+      <div className="flex gap-2 mb-4">
+        <button onClick={() => setSection("batter")} className={`px-4 py-2 rounded-xl text-sm font-semibold ${section === "batter" ? "bg-gray-900 text-white" : "bg-white border border-gray-200 text-gray-500"}`}>Batter Requests</button>
+        <button onClick={() => setSection("products")} className={`px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 ${section === "products" ? "bg-gray-900 text-white" : "bg-white border border-gray-200 text-gray-500"}`}>
+          Product Requests
+          {productPending > 0 && <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] flex items-center justify-center">{productPending}</span>}
+        </button>
+      </div>
+
+      {section === "products" ? (
+        <ProductRequestsSection onChanged={refreshProductPending} />
+      ) : (
+      <>
       <div className="flex flex-wrap gap-2 mb-4">
         {TABS.map((t) => (
           <button
@@ -314,6 +518,8 @@ export default function DailyRequirementPage() {
 
       {modalRequest && (
         <ApproveModal request={modalRequest} onClose={() => setModalRequest(null)} onDone={() => { setModalRequest(null); load(); }} />
+      )}
+      </>
       )}
     </DistributorAdminLayout>
   );
