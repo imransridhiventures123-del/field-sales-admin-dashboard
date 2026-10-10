@@ -24,6 +24,9 @@ const NAV = [
   // NEW (additive) — Feature: real-time distributor workflow
   { path: "/distributor-admin/products", label: "Products & Rates", end: true,
     icon: "M20.59 13.41L13.42 20.6a2 2 0 01-2.83 0L2.5 12.5V2h10.5l8.59 8.59a2 2 0 010 2.83zM7 7h.01" },
+  // NEW — Feature: distributor bills + ledger (what distributors owe the company)
+  { path: "/distributor-admin/ledger", label: "Distributor Ledger", end: true,
+    icon: "M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" },
 ];
 
 export default function DistributorAdminSidebar() {
