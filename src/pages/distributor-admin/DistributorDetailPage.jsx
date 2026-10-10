@@ -55,6 +55,8 @@ export default function DistributorDetailPage() {
   const [allCustomers, setAllCustomers] = useState([]);
   const [pickCustomer, setPickCustomer] = useState("");
   const [search, setSearch] = useState("");
+  const [showAssign, setShowAssign] = useState(false);   // NEW — assign panel open/closed
+  const [assignSearch, setAssignSearch] = useState("");  // NEW — search inside the assign panel
   const [newPassword, setNewPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [resetMsg, setResetMsg] = useState("");
@@ -92,12 +94,15 @@ export default function DistributorDetailPage() {
 
   useEffect(() => {
     getCustomers?.()
-      .then((data) => setAllCustomers((data.customers || data || []).filter((c) => !c.assignedDistributor)))
+      .then((data) => setAllCustomers(data.customers || data || []))  // ALL customers (search + badges handle the rest)
       .catch(() => {});
   }, [customers]);
 
   const handleAssign = async () => {
     if (!pickCustomer) return;
+    const picked = allCustomers.find((c) => c._id === pickCustomer);
+    if (picked?.assignedDistributor && String(picked.assignedDistributor?._id || picked.assignedDistributor) !== String(id)
+        && !window.confirm(`${picked.shopName} is already assigned to another distributor. Move to this distributor?`)) return;
     setAssignError("");
     setAssigning(true);
     try {
@@ -110,6 +115,8 @@ export default function DistributorDetailPage() {
       if (items.length > 0) await updateCustomerPricing(pickCustomer, items);
       setPickCustomer("");
       setAssignPrices({});
+      setAssignSearch("");
+      setShowAssign(false);
       load();
       getAdminTodayStatus(id).then(setTodayStatus).catch(() => {});
     } catch (err) {
@@ -130,6 +137,16 @@ export default function DistributorDetailPage() {
     setResetMsg(`Password reset. New login: ${data.loginCredentials.employeeId} / ${data.loginCredentials.password}`);
     setNewPassword("");
   };
+
+  // NEW — searchable list for the assign panel: shop, owner, phone, address
+  const assignOptions = (() => {
+    const q = assignSearch.trim().toLowerCase();
+    const list = q
+      ? allCustomers.filter((c) => [c.shopName, c.ownerName, c.phone, c.address].some((v) => String(v || "").toLowerCase().includes(q)))
+      : allCustomers;
+    return list.slice(0, 50);
+  })();
+  const pickedCustomer = allCustomers.find((c) => c._id === pickCustomer);
 
   const filteredCustomers = customers.filter((c) => (c.shopName || "").toLowerCase().includes(search.toLowerCase()));
 
@@ -288,9 +305,9 @@ export default function DistributorDetailPage() {
                 <p className="text-xs text-gray-400">Manage customers assigned to this distributor</p>
               </div>
             </div>
-            <button onClick={() => document.getElementById("assign-select")?.focus()} className="px-3 py-2 bg-teal-600 text-white rounded-xl text-xs font-medium flex items-center gap-1.5 whitespace-nowrap">
+            <button onClick={() => setShowAssign((v) => !v)} className="px-3 py-2 bg-teal-600 text-white rounded-xl text-xs font-medium flex items-center gap-1.5 whitespace-nowrap">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>
-              Assign Customer
+              {showAssign ? "Close" : "Assign Customer"}
             </button>
           </div>
 
@@ -300,23 +317,53 @@ export default function DistributorDetailPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name, ID or phone number…"
+                placeholder="Search assigned customers by name or phone…"
                 className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
-            <select
-              id="assign-select"
-              value={pickCustomer}
-              onChange={(e) => { setPickCustomer(e.target.value); setAssignPrices({}); setAssignError(""); }}
-              className="px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 max-w-[160px]"
-            >
-              <option value="">All Customers</option>
-              {allCustomers.map((c) => <option key={c._id} value={c._id}>{c.shopName}</option>)}
-            </select>
           </div>
-          {pickCustomer && (
+          {showAssign && (
+            <div className="mb-4 border border-teal-100 bg-teal-50/40 rounded-2xl p-3">
+              <p className="text-sm font-semibold text-gray-800">Assign a customer</p>
+              <p className="text-[11px] text-gray-500 mb-3">Search by shop name, owner, phone or address, then tap a customer.</p>
+              <input
+                value={assignSearch}
+                onChange={(e) => setAssignSearch(e.target.value)}
+                placeholder="Type e.g. hotel sakthi…"
+                autoFocus
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 mb-2"
+              />
+              <p className="text-[11px] text-gray-400 mb-1">{assignOptions.length} of {allCustomers.length} customers{assignSearch ? " match" : ""}</p>
+              <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-100 bg-white divide-y divide-gray-50">
+                {assignOptions.map((c) => {
+                  const ownerId = String(c.assignedDistributor?._id || c.assignedDistributor || "");
+                  const here = ownerId && ownerId === String(id);
+                  const elsewhere = ownerId && !here;
+                  const selected = pickCustomer === c._id;
+                  return (
+                    <button
+                      type="button" key={c._id} disabled={here}
+                      onClick={() => { setPickCustomer(c._id); setAssignPrices({}); setAssignError(""); }}
+                      className={`w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 ${selected ? "bg-teal-50" : "hover:bg-gray-50"} ${here ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">{c.shopName}</p>
+                        <p className="text-[11px] text-gray-400 truncate">{[c.ownerName, c.phone, c.address].filter(Boolean).join(" · ")}</p>
+                      </div>
+                      {here && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 whitespace-nowrap">Already here</span>}
+                      {elsewhere && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 whitespace-nowrap">Assigned elsewhere</span>}
+                      {selected && <span className="text-teal-600 text-sm">✓</span>}
+                    </button>
+                  );
+                })}
+                {assignOptions.length === 0 && <p className="text-xs text-gray-400 text-center py-6">No customer found for “{assignSearch}”.</p>}
+              </div>
+              {allCustomers.length > 0 && assignOptions.length === 50 && <p className="text-[11px] text-gray-400 mt-1">Showing first 50 — type to narrow down.</p>}
+            </div>
+          )}
+          {pickCustomer && showAssign && (
             <div className="mb-4 bg-gray-50 rounded-xl p-3">
-              <p className="text-xs font-semibold text-gray-600 mb-1">Set this customer's pricing (optional)</p>
+              <p className="text-xs font-semibold text-gray-600 mb-1">Pricing for {pickedCustomer?.shopName || "this customer"} (optional)</p>
               <p className="text-[11px] text-gray-400 mb-3">Leave a box empty to use the normal catalog price. The distributor can change it later.</p>
               {assignError && <div className="bg-red-50 text-red-600 text-xs px-3 py-2 rounded-lg mb-3" role="alert">{assignError}</div>}
               <div className="space-y-2 mb-3">
@@ -339,7 +386,7 @@ export default function DistributorDetailPage() {
                 {products.length === 0 && <p className="text-[11px] text-gray-400">No products in the catalog yet.</p>}
               </div>
               <button onClick={handleAssign} disabled={assigning} className="w-full py-2 rounded-xl bg-teal-50 text-teal-600 text-xs font-medium disabled:opacity-60">
-                {assigning ? "Assigning…" : "Confirm assign selected customer"}
+                {assigning ? "Assigning…" : `Assign ${pickedCustomer?.shopName || "customer"} to this distributor`}
               </button>
             </div>
           )}
