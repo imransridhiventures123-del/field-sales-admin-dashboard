@@ -17,6 +17,7 @@ import {
 import { getCustomers, updateCustomerPricing } from "../../api/customerApi";
 import { getProducts } from "../../api/productApi";
 import { getAdminDeliverySummary, getAdminDeliveries, getAdminTodayStatus, getAdminLedger } from "../../api/deliveryApi";
+import { DistributorLedgerSection } from "../../components/DistributorLedgerPanel"; // NEW — company ledger (bills + payments)
 
 function CopyField({ icon, label, value }) {
   const [copied, setCopied] = useState(false);
@@ -248,6 +249,10 @@ export default function DistributorDetailPage() {
           )}
         </div>
       )}
+
+      {/* NEW — this distributor's company ledger: bills for batter/products
+          taken from admin + payments made, with date range and PDF. */}
+      <DistributorLedgerSection distributorId={id} distributorName={distributor.name} employeeId={distributor.employeeId} />
 
       {recentDeliveries.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">

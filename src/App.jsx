@@ -44,6 +44,7 @@ import DistributorsMapPage    from "./pages/distributor-admin/DistributorsMapPag
 import DailyRequirementPage   from "./pages/distributor-admin/DailyRequirementPage";
 import ProductsPage           from "./pages/distributor-admin/ProductsPage";
 import DistributorDetailPage  from "./pages/distributor-admin/DistributorDetailPage";
+import DistributorLedgerPage  from "./pages/distributor-admin/DistributorLedgerPage"; // NEW — distributor bills ledger
 
 export default function App() {
   return (
@@ -89,6 +90,7 @@ export default function App() {
           <Route path="/distributor-admin/map"               element={<DistributorAdminRoute><DistributorsMapPage /></DistributorAdminRoute>} />
           <Route path="/distributor-admin/daily-requirement" element={<DistributorAdminRoute><DailyRequirementPage /></DistributorAdminRoute>} />
           <Route path="/distributor-admin/products" element={<DistributorAdminRoute><ProductsPage /></DistributorAdminRoute>} />
+          <Route path="/distributor-admin/ledger"            element={<DistributorAdminRoute><DistributorLedgerPage /></DistributorAdminRoute>} />
           <Route path="/distributor-admin/:id"               element={<DistributorAdminRoute><DistributorDetailPage /></DistributorAdminRoute>} />
 
           {/* 404 */}
