@@ -18,6 +18,7 @@ import { getCustomers, updateCustomerPricing } from "../../api/customerApi";
 import { getProducts } from "../../api/productApi";
 import { getAdminDeliverySummary, getAdminDeliveries, getAdminTodayStatus, getAdminLedger } from "../../api/deliveryApi";
 import { DistributorLedgerSection } from "../../components/DistributorLedgerPanel"; // NEW — company ledger (bills + payments)
+import DistributorDailyDeliveries from "../../components/DistributorDailyDeliveries"; // NEW — daily deliveries + date navigation
 
 function CopyField({ icon, label, value }) {
   const [copied, setCopied] = useState(false);
@@ -192,39 +193,8 @@ export default function DistributorDetailPage() {
         </div>
       )}
 
-      {/* NEW — today's shops: which shops this distributor took orders for, and their status */}
-      {todayStatus && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6" data-testid="today-shops">
-          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <p className="font-semibold text-gray-800">Today's Shops</p>
-            <div className="flex flex-wrap gap-1.5 text-[11px]">
-              <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-600">Ordered {todayStatus.totals.shopsOrdered}</span>
-              <span className="px-2 py-1 rounded-full bg-green-50 text-green-700">Delivered {todayStatus.totals.shopsDelivered}</span>
-              <span className="px-2 py-1 rounded-full bg-amber-50 text-amber-700">Pending {todayStatus.totals.shopsPending}</span>
-              <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-500">Skipped {todayStatus.totals.shopsSkipped}</span>
-            </div>
-          </div>
-          {(todayStatus.shops || []).length === 0 && <p className="text-sm text-gray-400">No orders taken today yet.</p>}
-          <div className="divide-y divide-gray-50">
-            {(todayStatus.shops || []).map((s, i) => (
-              <div key={i} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                <div className="min-w-0">
-                  <p className="font-medium text-gray-800 truncate">{s.shopName} <span className="text-[10px] text-gray-400 font-normal">{s.source === "manual" ? "· added by distributor" : "· approved request"}</span></p>
-                  <p className="text-xs text-gray-400">{s.idlyKg}kg idly · {s.dosaKg}kg dosa{(s.extraItems || []).map((it) => ` · ${it.qty} ${it.unit || "kg"} ${it.productName || it.productKey}`).join("")}</p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium ${s.status === "delivered" ? "bg-green-50 text-green-700" : s.status === "pending" ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
-                    {s.status === "delivered" ? "✓ Delivered" : s.status === "pending" ? "Pending" : "Skipped"}
-                  </span>
-                  {s.status === "delivered" && (
-                    <p className="text-[11px] text-gray-400 mt-0.5">₹{s.amountCharged} · Cash ₹{s.cashAmount} · GPay ₹{s.onlineAmount} · Credit ₹{s.creditAmount}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* NEW — Daily Deliveries with date navigation (replaces the old Today's Shops card) */}
+      <DistributorDailyDeliveries distributorId={id} />
 
       {/* NEW — this distributor's customer-wise ledger */}
       {ledger && (
@@ -270,28 +240,6 @@ export default function DistributorDetailPage() {
       {/* NEW — this distributor's company ledger: bills for batter/products
           taken from admin + payments made, with date range and PDF. */}
       <DistributorLedgerSection distributorId={id} distributorName={distributor.name} employeeId={distributor.employeeId} />
-
-      {recentDeliveries.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-6">
-          <p className="font-semibold text-gray-800 mb-3">Recent Deliveries</p>
-          <div className="divide-y divide-gray-50">
-            {recentDeliveries.slice(0, 8).map((r) => (
-              <div key={r._id} className="flex items-center justify-between py-2.5 text-sm">
-                <div>
-                  <p className="font-medium text-gray-700">{r.shopName || r.customer?.shopName}</p>
-                  <p className="text-xs text-gray-400">{r.idlyKg}kg idly · {r.dosaKg}kg dosa · {new Date(r.date).toLocaleDateString("en-IN")}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-medium text-gray-700">₹{r.amountCharged}</p>
-                  <span className={`text-[11px] ${r.status === "skipped" ? "text-gray-400" : r.status === "pending" || r.paymentStatus === "credit" ? "text-amber-600" : "text-green-600"}`}>
-                    {r.status === "skipped" ? "Skipped" : r.status === "pending" ? "Pending" : r.paymentStatus}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
