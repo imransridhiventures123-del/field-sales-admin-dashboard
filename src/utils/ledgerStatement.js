@@ -61,17 +61,21 @@ export function billParticulars(b) {
 }
 
 // bills/payments: exactly what GET /api/distributor-bills/admin/distributor/:id returns.
-export function buildStatement(bills = [], payments = [], range = { from: "", to: "" }) {
+export function buildStatement(bills = [], payments = [], range = { from: "", to: "" }, creditNow = 0) {
   const events = [
     ...bills.map((b) => ({
       kind: "bill", id: b._id, ts: new Date(b.billDate).getTime(), day: dayOf(b.billDate),
       debit: r2(b.totalAmount), credit: 0, bill: b, ...billParticulars(b),
     })),
-    ...payments.map((p) => ({
-      kind: "payment", id: p._id, ts: new Date(p.receivedAt).getTime(), day: dayOf(p.receivedAt),
-      debit: 0, credit: r2(p.amount), payment: p,
-      title: `Payment received (${p.mode === "online" ? "Online / GPay" : "Cash"})`, sub: p.note || "",
-    })),
+    ...payments.map((p) => {
+      const base = { kind: "payment", id: p._id, ts: new Date(p.receivedAt).getTime(), day: dayOf(p.receivedAt), payment: p, sub: p.note || "" };
+      const how = p.mode === "online" ? "Online / GPay" : "Cash";
+      // "credit" = NOT money received: the amount moves onto the distributor's credit (balance unchanged)
+      if (p.mode === "credit") return { ...base, debit: 0, credit: 0, creditDelta: r2(p.amount), title: "Moved to credit (no payment received)" };
+      // money that repays the credit balance
+      if (p.appliesTo === "credit") return { ...base, debit: 0, credit: r2(p.amount), creditDelta: -r2(p.amount), title: `Credit repaid by distributor (${how})` };
+      return { ...base, debit: 0, credit: r2(p.amount), creditDelta: 0, title: `Payment received (${how})` };
+    }),
   ].sort((a, b) => a.ts - b.ts || (a.kind === "bill" ? -1 : 1));
 
   let running = 0, opening = 0, closing = 0;
@@ -92,7 +96,7 @@ export function buildStatement(bills = [], payments = [], range = { from: "", to
     closing = 0;
     for (const e of events) if (e.day <= range.to) closing = e.balance;
   }
-  return { opening: r2(opening), billed, received, closing: r2(closing), rows };
+  return { opening: r2(opening), billed, received, closing: r2(closing), rows, creditNow: r2(creditNow) };
 }
 
 /* ───────────────────────── PDF ───────────────────────── */
@@ -133,13 +137,14 @@ export function buildStatementPdf({ distributor, statement, range }) {
   ]);
 
   const body = [];
-  body.push([{ content: "Opening balance", colSpan: 4, styles: { fontStyle: "italic" } }, { content: money(statement.opening), styles: { halign: "right", fontStyle: "italic" } }]);
+  body.push([{ content: "Opening balance", colSpan: 5, styles: { fontStyle: "italic" } }, { content: money(statement.opening), styles: { halign: "right", fontStyle: "italic" } }]);
   statement.rows.forEach((r) => {
     body.push([
       fmtDay(r.day),
       r.sub ? `${r.title}\n${r.sub}` : r.title,
       r.debit ? money(r.debit) : "",
       r.credit ? money(r.credit) : "",
+      r.creditDelta ? `${r.creditDelta > 0 ? "+" : "-"}${money(Math.abs(r.creditDelta))}` : "",
       money(r.balance),
     ]);
   });
@@ -148,17 +153,21 @@ export function buildStatementPdf({ distributor, statement, range }) {
     { content: money(statement.billed), styles: { fontStyle: "bold" } },
     { content: money(statement.received), styles: { fontStyle: "bold" } },
     "",
+    "",
   ]);
-  body.push([{ content: "Closing balance (pending)", colSpan: 4, styles: { fontStyle: "bold", fillColor: [254, 242, 242], textColor: [185, 28, 28] } }, { content: money(statement.closing), styles: { halign: "right", fontStyle: "bold", fillColor: [254, 242, 242], textColor: [185, 28, 28] } }]);
+  body.push([{ content: "Closing balance (total owed to company)", colSpan: 5, styles: { fontStyle: "bold", fillColor: [254, 242, 242], textColor: [185, 28, 28] } }, { content: money(statement.closing), styles: { halign: "right", fontStyle: "bold", fillColor: [254, 242, 242], textColor: [185, 28, 28] } }]);
+  if (statement.creditNow > 0) {
+    body.push([{ content: "Of this, on credit with the distributor now", colSpan: 5, styles: { fontStyle: "bold", fillColor: [255, 247, 237], textColor: [180, 83, 9] } }, { content: money(statement.creditNow), styles: { halign: "right", fontStyle: "bold", fillColor: [255, 247, 237], textColor: [180, 83, 9] } }]);
+  }
 
   autoTable(doc, {
     startY: startY + 2,
-    head: [["Date", "Particulars", "Billed (Dr)", "Received (Cr)", "Balance"]],
+    head: [["Date", "Particulars", "Billed (Dr)", "Received (Cr)", "On credit", "Balance"]],
     body,
     theme: "grid",
     headStyles: { fillColor: TEAL, textColor: 255, fontStyle: "bold" },
     styles: { fontSize: 8.5, cellPadding: 2.2, lineColor: [210, 214, 220], lineWidth: 0.2, valign: "middle" },
-    columnStyles: { 0: { cellWidth: 24 }, 1: { cellWidth: "auto" }, 2: { halign: "right", cellWidth: 27 }, 3: { halign: "right", cellWidth: 27 }, 4: { halign: "right", cellWidth: 27 } },
+    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: "auto" }, 2: { halign: "right", cellWidth: 24 }, 3: { halign: "right", cellWidth: 24 }, 4: { halign: "right", cellWidth: 22 }, 5: { halign: "right", cellWidth: 24 } },
     alternateRowStyles: { fillColor: [247, 248, 250] },
     margin: { left: 14, right: 14 },
   });
