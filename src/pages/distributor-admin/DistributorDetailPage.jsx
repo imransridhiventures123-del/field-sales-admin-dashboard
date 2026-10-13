@@ -19,6 +19,7 @@ import { getProducts } from "../../api/productApi";
 import { getAdminDeliverySummary, getAdminDeliveries, getAdminTodayStatus, getAdminLedger } from "../../api/deliveryApi";
 import { DistributorLedgerSection } from "../../components/DistributorLedgerPanel"; // NEW — company ledger (bills + payments)
 import DistributorDailyDeliveries from "../../components/DistributorDailyDeliveries"; // NEW — daily deliveries + date navigation
+import { EditStockModal } from "../../components/DistributorEditModals"; // NEW — admin edits fridge stock
 
 function CopyField({ icon, label, value }) {
   const [copied, setCopied] = useState(false);
@@ -56,6 +57,8 @@ export default function DistributorDetailPage() {
   const [allCustomers, setAllCustomers] = useState([]);
   const [pickCustomer, setPickCustomer] = useState("");
   const [search, setSearch] = useState("");
+  const [showStockEdit, setShowStockEdit] = useState(false); // NEW — edit fridge stock pop-up
+  const [ledgerKey, setLedgerKey] = useState(0);              // NEW — bump to reload the company ledger after an edit
   const [showAssign, setShowAssign] = useState(false);   // NEW — assign panel open/closed
   const [assignSearch, setAssignSearch] = useState("");  // NEW — search inside the assign panel
   const [newPassword, setNewPassword] = useState("");
@@ -177,7 +180,10 @@ export default function DistributorDetailPage() {
         <GradientStatCard color="teal"   icon="M5 13l4 4L19 7" label="Employee ID" value={distributor.employeeId} />
         <GradientStatCard color="purple" icon="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z" label="Zone" value={distributor.zone?.name || "—"} />
         <GradientStatCard color="green"  icon="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0" label="Customers Assigned" value={customers.length} subtext={customers.length ? undefined : "No customers assigned yet"} />
+        <div className="relative">
         <GradientStatCard color="orange" icon="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" label="Stock (Idly/Dosa Kg)" value={`${distributor.currentStockKg?.idly || 0} / ${distributor.currentStockKg?.dosa || 0}`} />
+          <button type="button" onClick={() => setShowStockEdit(true)} className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-white/90 border border-orange-200 text-orange-600 text-[11px] font-medium hover:bg-white" aria-label="Edit fridge stock">✎ Edit</button>
+        </div>
       </div>
 
       {/* NEW (additive) — Feature: real-time distributor workflow.
@@ -194,7 +200,14 @@ export default function DistributorDetailPage() {
       )}
 
       {/* NEW — Daily Deliveries with date navigation (replaces the old Today's Shops card) */}
-      <DistributorDailyDeliveries distributorId={id} />
+      <DistributorDailyDeliveries
+        distributorId={id}
+        onChanged={() => {
+          // a payment was edited: refresh this page's totals + customer ledger
+          getAdminLedger(id).then(setLedger).catch(() => {});
+          getAdminDeliverySummary(id).then(setSummary).catch(() => {});
+        }}
+      />
 
       {/* NEW — this distributor's customer-wise ledger */}
       {ledger && (
@@ -239,7 +252,7 @@ export default function DistributorDetailPage() {
 
       {/* NEW — this distributor's company ledger: bills for batter/products
           taken from admin + payments made, with date range and PDF. */}
-      <DistributorLedgerSection distributorId={id} distributorName={distributor.name} employeeId={distributor.employeeId} />
+      <DistributorLedgerSection key={ledgerKey} distributorId={id} distributorName={distributor.name} employeeId={distributor.employeeId} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -409,6 +422,18 @@ export default function DistributorDetailPage() {
           </div>
         </div>
       </div>
+      {showStockEdit && (
+        <EditStockModal
+          distributor={distributor}
+          products={products}
+          onClose={() => setShowStockEdit(false)}
+          onSaved={() => {
+            setShowStockEdit(false);
+            getDistributorById(id).then((data) => setDistributor(data.distributor)).catch(() => {}); // refresh stock without a full-page reload
+            setLedgerKey((k) => k + 1);
+          }}
+        />
+      )}
     </DistributorAdminLayout>
   );
 }
