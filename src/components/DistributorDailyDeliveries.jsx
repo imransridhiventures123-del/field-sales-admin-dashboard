@@ -7,6 +7,7 @@
 //   other  -> GET /api/deliveries/admin?distributorId=&date=YYYY-MM-DD
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { getAdminDeliveries, getAdminTodayStatus } from "../api/deliveryApi";
+import { EditPaymentModal } from "./DistributorEditModals"; // NEW — admin can edit cash/online/credit
 
 const pad = (n) => String(n).padStart(2, "0");
 const toKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -29,6 +30,7 @@ function fromRecord(r) {
   const cash = r.cashAmount !== undefined && r.cashAmount !== null ? r.cashAmount : (r.amountPaid || 0); // old records: amountPaid = cash
   return {
     key: r._id,
+    id: r._id,
     shopName: r.shopName || r.customer?.shopName || "—",
     source: r.source,
     status: r.status || "delivered",
@@ -69,21 +71,39 @@ function Tile({ label, value, sub, tone = "gray" }) {
   );
 }
 
-export default function DistributorDailyDeliveries({ distributorId }) {
+export default function DistributorDailyDeliveries({ distributorId, onChanged }) {
   const [dateKey, setDateKey] = useState(toKey(new Date()));
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
+  const [editing, setEditing] = useState(null); // row being edited
 
   const isToday = dateKey === toKey(new Date());
 
   const load = useCallback(() => {
     setLoading(true);
     setError("");
+    // Today: the status list (includes not-yet-delivered shops) + the day's records,
+    // so each delivered row can be matched to its record id and become editable.
+    const todayReq = Promise.all([
+      getAdminTodayStatus(distributorId),
+      getAdminDeliveries({ distributorId, date: dateKey }).catch(() => ({ records: [] })),
+    ]).then(([d, recs]) => {
+      const pool = [...(recs.records || [])];
+      return (d.shops || []).map((s, i) => {
+        const row = fromTodayShop(s, i);
+        if (s.status === "delivered") {
+          const at = pool.findIndex((r) => r.status === "delivered" && String(r.customer?._id || r.customer) === String(s.customerId)
+            && (r.idlyKg || 0) === row.idlyKg && (r.dosaKg || 0) === row.dosaKg && (Number(r.amountCharged) || 0) === row.charged);
+          if (at >= 0) row.id = pool.splice(at, 1)[0]._id;
+        }
+        return row;
+      });
+    });
     const req = isToday
-      ? getAdminTodayStatus(distributorId).then((d) => (d.shops || []).map(fromTodayShop))
+      ? todayReq
       : getAdminDeliveries({ distributorId, date: dateKey }).then((d) => (d.records || []).map(fromRecord));
     req.then(setRows).catch(() => { setRows([]); setError("Couldn't load deliveries for this date. Please try again."); }).finally(() => setLoading(false));
   }, [distributorId, dateKey, isToday]);
@@ -176,7 +196,7 @@ export default function DistributorDailyDeliveries({ distributorId }) {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-100">
-          <table className="w-full text-sm min-w-[760px]">
+          <table className="w-full text-sm min-w-[820px]">
             <thead className="bg-gray-50 text-gray-500 text-[11px] uppercase tracking-wide">
               <tr>
                 <th className="text-left px-3 py-2.5 font-medium">Shop</th>
@@ -186,6 +206,7 @@ export default function DistributorDailyDeliveries({ distributorId }) {
                 <th className="text-right px-3 py-2.5 font-medium">Cash</th>
                 <th className="text-right px-3 py-2.5 font-medium">Online</th>
                 <th className="text-right px-3 py-2.5 font-medium">Credit</th>
+                <th className="px-3 py-2.5 w-14"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -212,6 +233,11 @@ export default function DistributorDailyDeliveries({ distributorId }) {
                     <td className="px-3 py-2.5 text-right text-green-700">{done ? money(r.cash) : "—"}</td>
                     <td className="px-3 py-2.5 text-right text-sky-700">{done ? money(r.online) : "—"}</td>
                     <td className={`px-3 py-2.5 text-right ${done && r.credit > 0 ? "text-amber-600 font-semibold" : "text-gray-400"}`}>{done ? money(r.credit) : "—"}</td>
+                    <td className="px-3 py-2.5 text-right">
+                      {done && r.id && (
+                        <button type="button" onClick={() => setEditing(r)} className="text-xs text-teal-600 font-medium hover:underline" aria-label={`Edit payment for ${r.shopName}`}>✎ Edit</button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -223,10 +249,18 @@ export default function DistributorDailyDeliveries({ distributorId }) {
                 <td className="px-3 py-2.5 text-right text-green-700">{money(totals.cash)}</td>
                 <td className="px-3 py-2.5 text-right text-sky-700">{money(totals.online)}</td>
                 <td className="px-3 py-2.5 text-right text-amber-600">{money(totals.credit)}</td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
         </div>
+      )}
+      {editing && (
+        <EditPaymentModal
+          row={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); onChanged?.(); }}
+        />
       )}
     </div>
   );

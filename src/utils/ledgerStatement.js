@@ -56,7 +56,7 @@ export function billParticulars(b) {
   const what = (b.items || []).map((it) => `${it.productName || it.productKey} ${it.qty} ${it.unit || "kg"} x Rs.${it.rate}`).join(", ");
   return {
     title: `Bill ${b.billNumber}`,
-    sub: `${b.sourceType === "batter_request" ? "Batter request" : "Product request"}${what ? " - " + what : ""}`,
+    sub: `${b.sourceType === "batter_request" ? "Batter request" : b.sourceType === "stock_adjustment" ? "Stock added by admin" : "Product request"}${what ? " - " + what : ""}`,
   };
 }
 
