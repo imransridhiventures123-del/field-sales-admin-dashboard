@@ -4,7 +4,7 @@
 // 2. Porter tab — show deliveries moved to porter section
 // 3. Lat/lng manual input (no map picker required)
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
 import AdminLayout from "../components/AdminLayout";
 import InvoiceTypeModal from "../components/InvoiceTypeModal";
@@ -363,7 +363,46 @@ function DeliveryModal({ driverId, delivery, activeDate, onSave, onClose }) {
 function DeliveryMapView({ deliveries, isLoaded, driverLocations }) {
   const [selected, setSelected] = useState(null);
   const withGps = deliveries.filter(d => d.latitude && d.longitude);
-  const center  = withGps[0] ? { lat: withGps[0].latitude, lng: withGps[0].longitude } : CHENNAI;
+
+  // FIX: the map used to receive center={...} + zoom={13} as controlled props.
+  // The page re-renders every 3s (driver live-location polling) and on every
+  // marker click, so the map was forced back to the first delivery / zoom 13
+  // each time — admin could not pan or zoom freely. Now the map is initialised
+  // once and fitted ONCE to all deliveries; after that the admin has full
+  // control (pan / zoom in / zoom out anywhere) and re-renders don't touch it.
+  const mapRef = useRef(null);
+  const initialOptions = useMemo(() => ({
+    streetViewControl: false,
+    gestureHandling: "greedy",
+    zoomControl: true,
+    minZoom: 2,            // allow zooming far out
+    maxZoom: 21,
+    restriction: null,     // no bounds restriction
+    center: withGps[0] ? { lat: withGps[0].latitude, lng: withGps[0].longitude } : CHENNAI,
+    zoom: 13,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), []);
+
+  // Fit to all delivery pins only when the SET of deliveries changes
+  // (new date / driver / order added) — never on polling or marker click.
+  const pinsKey = withGps.map(d => `${d._id}:${d.latitude},${d.longitude}`).join("|");
+  const fitAll = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !window.google?.maps || withGps.length === 0) return;
+    if (withGps.length === 1) {
+      map.setCenter({ lat: withGps[0].latitude, lng: withGps[0].longitude });
+      map.setZoom(15);
+      return;
+    }
+    const bounds = new window.google.maps.LatLngBounds();
+    withGps.forEach(d => bounds.extend({ lat: d.latitude, lng: d.longitude }));
+    map.fitBounds(bounds, 60);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinsKey]);
+
+  useEffect(() => { fitAll(); }, [fitAll]);
+  const onMapLoad = useCallback((map) => { mapRef.current = map; fitAll(); }, [fitAll]);
+  const onMapUnmount = useCallback(() => { mapRef.current = null; }, []);
 
   const deliveryIcon = (status) => ({
     url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
@@ -392,8 +431,9 @@ function DeliveryMapView({ deliveries, isLoaded, driverLocations }) {
     <div className="relative h-full">
       <GoogleMap
         mapContainerStyle={{ height:"100%", width:"100%" }}
-        center={center} zoom={13}
-        options={{ streetViewControl:false, gestureHandling:"greedy" }}
+        options={initialOptions}
+        onLoad={onMapLoad}
+        onUnmount={onMapUnmount}
       >
         {/* Delivery fixed pins */}
         {withGps.map(d => (
@@ -410,6 +450,11 @@ function DeliveryMapView({ deliveries, isLoaded, driverLocations }) {
             animation={window.google?.maps?.Animation?.BOUNCE}/>
         ))}
       </GoogleMap>
+
+      {/* Re-fit button — admin can jump back to see all deliveries anytime */}
+      <button onClick={fitAll} className="absolute top-3 right-3 bg-white rounded-lg shadow-md px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+        ⤢ Show all
+      </button>
 
       {/* Legend */}
       <div className="absolute bottom-4 left-4 bg-white rounded-xl shadow-lg p-3 text-xs space-y-1.5">
